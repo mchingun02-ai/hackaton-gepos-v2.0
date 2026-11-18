@@ -8,9 +8,9 @@
    sudo apt-get update && sudo apt-get install -y git rsync
    git clone https://github.com/<owner>/<repo>.git ~/gepos && cd ~/gepos
    ```
-3. **Суулгах.** Анх ажиллуулахад `/etc/gepos.env` үүснэ.
+3. **Суулгах.** Өмнөх орчны өгөгдлийг шилжүүлэх бол `/etc/gepos.env`-ийг урьдчилан тавина (`AUTH_SECRET`, `FB_TOKEN_KEY` нь хуучин орчныхтой ижил байх ёстой — өгөгдөл тэдгээрээр шифрлэгдсэн) ба `DATA_TGZ=/root/gepos-data.tgz` өгнө. Эс бөгөөс анх ажиллуулахад `/etc/gepos.env` шинээр үүснэ.
    ```bash
-   sudo GEPOS_DOMAIN=ai.example.mn bash deploy/install.sh
+   sudo GEPOS_DOMAIN=ai.example.mn DATA_TGZ=/root/gepos-data.tgz bash deploy/install.sh
    ```
 4. **Тохиргоо.** `/etc/gepos.env`-д дараах утгуудыг бөглөнө:
    - `DASHSCOPE_API_KEY` — TokenHub түлхүүр
