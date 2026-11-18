@@ -22,7 +22,7 @@ const day = (offset: number) => {
 };
 
 export const ROLES: Role[] = [
-  { id: "admin", name: "Админ", modules: ["dashboard", "sales", "products", "delivery", "campaigns", "wallet", "crm", "marketing", "chat", "ai", "reports", "account"], manage: true, builtIn: true },
+  { id: "admin", name: "Админ", modules: ["dashboard", "sales", "products", "delivery", "campaigns", "wallet", "crm", "marketing", "chat", "ai", "aiemp", "reports", "account"], manage: true, builtIn: true },
   { id: "manager", name: "Дэлгүүрийн менежер", modules: ["dashboard", "sales", "products", "reports", "campaigns", "delivery"], manage: true, builtIn: true },
   { id: "cashier", name: "Касс / Борлуулагч", modules: ["sales"], manage: false, builtIn: true },
   { id: "accountant", name: "Нягтлан бодогч", modules: ["reports"], manage: false, builtIn: true },

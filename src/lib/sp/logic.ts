@@ -49,10 +49,12 @@ export const staffName = (s?: { first: string; last: string }) => (s ? `${s.last
 
 export const PLAN_LABEL: Record<Plan, string> = { basic: "Basic", plus: "Plus", premium: "Premium" };
 export const PLAN_MODULES: Record<Plan, Module[]> = {
-  basic: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "reports", "account"],
-  plus: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "reports", "account", "delivery", "campaigns"],
-  premium: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "reports", "account", "delivery", "campaigns", "wallet"],
+  basic: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "aiemp", "reports", "account"],
+  plus: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "aiemp", "reports", "account", "delivery", "campaigns"],
+  premium: ["dashboard", "sales", "products", "crm", "marketing", "chat", "ai", "aiemp", "reports", "account", "delivery", "campaigns", "wallet"],
 };
+/** Хуучин Gemini туслах (модуль «ai») — зөвхөн тусгай тохиргоогоор */
+export const LEGACY_AI = process.env.NEXT_PUBLIC_AI_LEGACY_ASSISTANT === "on";
 /** Тухайн модульд хамгийн бага шаардагдах багц */
 export const MODULE_PLAN: Partial<Record<Module, Plan>> = { delivery: "plus", campaigns: "plus", wallet: "premium" };
 
@@ -67,6 +69,7 @@ export const MODULE_LABEL: Record<Module, string> = {
   marketing: "Маркетинг",
   chat: "Facebook чат",
   ai: "AI туслах",
+  aiemp: "AI ажилтан",
   reports: "Тайлан",
   account: "Миний бүртгэл",
 };

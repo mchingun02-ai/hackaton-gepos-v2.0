@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/sp/icons";
 import { Badge, Btn, cx, Field, Notice, Segmented, toast, useConfirm } from "@/components/sp/ui";
-import { fmtPhone, MODULE_LABEL, PLAN_LABEL, PLAN_MODULES, staffName } from "@/lib/sp/logic";
+import { fmtPhone, LEGACY_AI, MODULE_LABEL, PLAN_LABEL, PLAN_MODULES, staffName } from "@/lib/sp/logic";
 import { addRole, setPlan, SpError, uid, updateMerchant, upsertStaff } from "@/lib/sp/store";
 import { normReg, validReg } from "@/lib/sp/eid";
 import type { Module, Plan, Role, Staff } from "@/lib/sp/types";
@@ -112,8 +112,8 @@ function Plans() {
   const [pick, setPick] = useState<Plan | null>(null);
   const cur = s.merchant.plan;
   const down = pick ? ORDER.indexOf(pick) < ORDER.indexOf(cur) : false;
-  const lost = pick ? PLAN_MODULES[cur].filter((m) => !PLAN_MODULES[pick].includes(m)) : [];
-  const gained = pick ? PLAN_MODULES[pick].filter((m) => !PLAN_MODULES[cur].includes(m)) : [];
+  const lost = pick ? shown(PLAN_MODULES[cur]).filter((m) => !PLAN_MODULES[pick].includes(m)) : [];
+  const gained = pick ? shown(PLAN_MODULES[pick]).filter((m) => !PLAN_MODULES[cur].includes(m)) : [];
   return (
     <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -185,7 +185,9 @@ function Plans() {
 
 /* ───────── ажилтан ───────── */
 
-const ALL_MODULES: Module[] = ["dashboard", "sales", "products", "delivery", "campaigns", "wallet", "crm", "marketing", "chat", "ai", "reports", "account"];
+// Хуучин Gemini туслах («ai») идэвхгүй үед сонголт, жагсаалтад харагдахгүй
+const ALL_MODULES: Module[] = (["dashboard", "sales", "products", "delivery", "campaigns", "wallet", "crm", "marketing", "chat", "ai", "aiemp", "reports", "account"] as Module[]).filter((m) => m !== "ai" || LEGACY_AI);
+const shown = (mods: Module[]) => mods.filter((m) => ALL_MODULES.includes(m));
 
 function StaffTab() {
   const { s } = usePortal();
@@ -224,7 +226,7 @@ function StaffTab() {
               <span className="text-[12px] text-mute">{s.staff.filter((x) => x.active && x.roleId === r.id).length} ажилтан</span>
             </div>
             <p className="mt-1.5 text-[13px] leading-snug text-mute">
-              {r.modules.length === ALL_MODULES.length ? "Бүх цэс" : r.modules.map((m) => MODULE_LABEL[m]).join(", ")}
+              {ALL_MODULES.every((m) => r.modules.includes(m)) ? "Бүх цэс" : shown(r.modules).map((m) => MODULE_LABEL[m]).join(", ")}
               {r.manage && " · буцаалт, цуцлалт"}
             </p>
           </div>
@@ -242,6 +244,7 @@ function StaffDrawer({ staff, onClose, onNewRole }: { staff: Staff | null; onClo
   const [tried, setTried] = useState(false);
   const { confirm, node } = useConfirm();
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- өөр ажилтан нээгдэхэд маягтыг шинэчилнэ
     setF(staff);
     setTried(false);
   }, [staff]);
@@ -366,7 +369,7 @@ function StaffDrawer({ staff, onClose, onNewRole }: { staff: Staff | null; onClo
           <p className="px-1 text-[13px] text-mute">
             {(() => {
               const r = s.roles.find((x) => x.id === f.roleId);
-              return r ? `Харах цэс: ${r.modules.map((m) => MODULE_LABEL[m]).join(", ")}` : "";
+              return r ? `Харах цэс: ${shown(r.modules).map((m) => MODULE_LABEL[m]).join(", ")}` : "";
             })()}
           </p>
           {isNew ? (
@@ -390,6 +393,7 @@ function RoleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [manage, setManage] = useState(false);
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- цонх нээгдэх бүрт маягтыг цэвэрлэнэ
       setName("");
       setMods(["sales"]);
       setManage(false);

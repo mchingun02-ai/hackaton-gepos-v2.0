@@ -4,12 +4,13 @@
  * Тушаал — захирал энгийн үгээр (бичих эсвэл ярих) ажил өгнө, AI гүйцэтгэнэ.
  * Алхам бүр (ямар хэрэгсэл, юу өөрчлөгдсөн) шууд харагдана. Эрсдэлтэй үйлдэл «Батлах» хүлээнэ.
  */
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/sp/icons";
 import { ASSISTANTS, DIRECTOR_ASSISTANTS, type AssistantId } from "@/lib/assistants/registry";
 import { Btn, cx, Spinner, toast } from "@/components/sp/ui";
 import type { Section, Stats } from "./AiApp";
 import { aj, ago, CHANNEL, hm, listen, useAiEvents, useLive, type Recorder } from "./client";
+import { EmbedCtx } from "./embed";
 import { Md } from "./Md";
 
 type Step = { tool: string; title: string; args: Record<string, unknown>; ok: boolean; summary: string; status: "done" | "pending" | "error"; action_id: string };
@@ -38,6 +39,8 @@ export function Command({ stats, go }: { stats: Stats | null; go: (s: Section) =
   const [hearing, setHearing] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const msgs = data?.messages ?? [];
+  // Портал дотор хуудасны гарчиг (h1) порталын толгойд байгаа тул энд h2
+  const Title = useContext(EmbedCtx) ? "h2" : "h1";
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -115,7 +118,7 @@ export function Command({ stats, go }: { stats: Stats | null; go: (s: Section) =
     <div className="mx-auto grid max-w-[1320px] gap-6 px-4 py-6 md:px-8 xl:grid-cols-[minmax(0,1fr)_340px]">
       <section className="flex min-h-[calc(100dvh-120px)] flex-col">
         <div className="mb-4">
-          <h1 className="text-[28px] font-bold tracking-[-0.02em]">Юу хийлгэх вэ?</h1>
+          <Title className="text-[28px] font-bold tracking-[-0.02em]">Юу хийлгэх вэ?</Title>
           <p className="text-[14.5px] text-mute">Энгийнээр бичээд эсвэл хэлээд өгөөрэй. AI ажилтан ПОС, харилцагч, урамшуулал, мэдлэгийн сан дээр өөрөө хийнэ.</p>
         </div>
 

@@ -28,6 +28,15 @@ export type Section =
   | "marketing"
   | "chat"
   | "ai"
+  | "ai-command"
+  | "ai-inbox"
+  | "ai-tickets"
+  | "ai-contacts"
+  | "ai-knowledge"
+  | "ai-inventory"
+  | "ai-billing"
+  | "ai-privacy"
+  | "ai-settings"
   | "reports"
   | "account";
 
@@ -44,6 +53,15 @@ export const SECTION_MODULE: Record<Section, Module> = {
   marketing: "marketing",
   chat: "chat",
   ai: "ai",
+  "ai-command": "aiemp",
+  "ai-inbox": "aiemp",
+  "ai-tickets": "aiemp",
+  "ai-contacts": "aiemp",
+  "ai-knowledge": "aiemp",
+  "ai-inventory": "aiemp",
+  "ai-billing": "aiemp",
+  "ai-privacy": "aiemp",
+  "ai-settings": "aiemp",
   reports: "reports",
   account: "account",
 };
@@ -74,19 +92,26 @@ export function usePortal() {
 export function Page({ title, sub, actions, children, tabs }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; children: ReactNode; tabs?: ReactNode }) {
   return (
     <div className="min-h-full">
-      <header className="sp-material sticky top-0 z-20 border-b border-[var(--sp-sep)]">
-        <div className="flex min-h-[64px] items-center gap-3 px-4 py-2.5 md:px-8">
-          <MenuButton />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[22px] font-bold leading-tight tracking-[-0.02em] text-ink">{title}</h1>
-            {sub && <div className="truncate text-[13px] text-mute">{sub}</div>}
-          </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-        </div>
-        {tabs && <div className="px-4 pb-3 md:px-8">{tabs}</div>}
-      </header>
+      <PageHeader title={title} sub={sub} actions={actions} tabs={tabs} />
       <div className="mx-auto max-w-[1280px] px-4 py-6 md:px-8">{children}</div>
     </div>
+  );
+}
+
+/** Хуудасны sticky толгой (гарчиг, тайлбар, үйлдэл) — AI ажилтны хэсгүүд мөн үүнийг ашиглана */
+export function PageHeader({ title, sub, actions, tabs }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; tabs?: ReactNode }) {
+  return (
+    <header className="sp-material sticky top-0 z-20 border-b border-[var(--sp-sep)]">
+      <div className="flex min-h-[64px] items-center gap-3 px-4 py-2.5 md:px-8">
+        <MenuButton />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-[22px] font-bold leading-tight tracking-[-0.02em] text-ink">{title}</h1>
+          {sub && <div className="truncate text-[13px] text-mute" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {tabs && <div className="px-4 pb-3 md:px-8">{tabs}</div>}
+    </header>
   );
 }
 
@@ -518,6 +543,7 @@ export function readImage(file: File, max = 400): Promise<string> {
 /** Өнгө сонгогч + hex талбар */
 export function ColorField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const [txt, setTxt] = useState(value);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- гаднаас өнгө солигдвол бичвэрийг дагуулна
   useEffect(() => setTxt(value), [value]);
   return (
     <div className="flex items-center gap-2">

@@ -54,9 +54,11 @@ export function useChatUnread(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     let live = true;
+    // Серверийн session-гүй үед (AI ажилтанд нэвтрээгүй) 401 алдаа гаргахгүйн тулд эхлээд шалгана
     const tick = () =>
-      api<Status>("/status")
-        .then((st) => live && setN(st.counts.unread))
+      fetch("/api/auth/me", { cache: "no-store" })
+        .then((r) => r.json() as Promise<{ authenticated?: boolean }>)
+        .then((me) => (me.authenticated ? api<Status>("/status").then((st) => live && setN(st.counts.unread)) : undefined))
         .catch(() => {});
     tick();
     const t = setInterval(tick, 30_000);

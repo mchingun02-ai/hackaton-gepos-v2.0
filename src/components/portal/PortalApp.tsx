@@ -6,12 +6,11 @@
  */
 
 import { AnimatePresence, motion } from "motion/react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Wordmark } from "@/components/icons";
 import { Icon, type IconName } from "@/components/sp/icons";
 import { Btn, cx, Switch, toast, Toaster, useConfirm, useTheme } from "@/components/sp/ui";
-import { access, lowStock, orderState, PLAN_LABEL } from "@/lib/sp/logic";
+import { access, LEGACY_AI, lowStock, orderState, PLAN_LABEL } from "@/lib/sp/logic";
 import { actorOf, resetDemo, setEbarimt, setOnline, SpGate, useSp } from "@/lib/sp/store";
 import type { Module } from "@/lib/sp/types";
 import { Ctx, Dialog, Locked, MenuCtx, SECTION_MODULE, type PortalCtx, type Section } from "./kit";
@@ -26,8 +25,8 @@ import Crm from "./Crm";
 import Marketing from "./Marketing";
 import Chat, { useChatUnread } from "./Chat";
 import Assistant from "./Assistant";
-
-const LEGACY_AI = process.env.NEXT_PUBLIC_AI_LEGACY_ASSISTANT === "on";
+import { AI_NAV, aiBadge, aiReady, aiSecOf, AiSectionView, AiStatsSource, AiStatus, useAiAuth } from "./AiEmployee";
+import type { Stats as AiStats } from "@/components/ai/AiApp";
 import Reports from "./Reports";
 import Account from "./Account";
 
@@ -107,17 +106,27 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
   }, [session, staff, onLogout]);
 
   const actor = useMemo(() => (staff ? actorOf(staff) : { id: "owner", name: s.merchant.name }), [staff, s.merchant.name]);
-  const firstAllowed = (["dashboard", "sales", "products", "orders", "campaigns", "crm", "marketing", "chat", "ai", "reports", "account"] as Section[]).find((x) => can(SECTION_MODULE[x]) !== "hidden" && (x !== "ai" || LEGACY_AI)) ?? "dashboard";
+  const firstAllowed = (["dashboard", "sales", "products", "orders", "campaigns", "crm", "marketing", "chat", "ai", "ai-command", "reports", "account"] as Section[]).find((x) => can(SECTION_MODULE[x]) !== "hidden" && (x !== "ai" || LEGACY_AI)) ?? "dashboard";
   // Хуучин Gemini туслах — хакатоны үзүүлэнд нуусан (§12); NEXT_PUBLIC_AI_LEGACY_ASSISTANT=on үед л
   const valid = (Object.keys(SECTION_MODULE) as Section[]).includes(section) && (section !== "ai" || LEGACY_AI);
   const current: Section = valid && can(SECTION_MODULE[section]) !== "hidden" ? section : firstAllowed;
 
   useEffect(() => {
     if (current !== section) go(current);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- хуудас солигдоход гар утасны цэсийг хаана
     setMenu(false);
   }, [current, section, go, sub]);
 
   const ctx: PortalCtx = { s, role, staff, actor, canManage: !role || role.manage, go, sub, can };
+
+  // AI ажилтан: серверийн session (cookie) ба товч статистик — зөвхөн нэвтэрсэн үед татна
+  const aiOn = can("aiemp") === "ok";
+  const aiAuth = useAiAuth(aiOn);
+  const aiOk = aiOn && aiReady(aiAuth.me, s.merchant.regNo);
+  const [aiStats, setAiStats] = useState<AiStats | null>(null);
+  const aiSec = aiSecOf(current);
+  const [aiFold, setAiFold] = useState<boolean | null>(null);
+  const aiOpen = aiFold ?? aiSec !== null;
 
   const chatUnread = useChatUnread(can("chat") === "ok");
   const newOrders = s.orders.filter((o) => orderState(s, o) === "active" && o.statusId === "received").length;
@@ -138,14 +147,16 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
   const LOCK_COPY: Partial<Record<Module, { title: string; body: string; icon: IconName }>> = {
     delivery: { title: "Хүргэлт", icon: "truck", body: "Өөрийн захиалгын веб хуудас, хүргэлтийн бүс, төлөв, SMS мэдэгдэл, ачаа буулгах код." },
     campaigns: { title: "Урамшуулал", icon: "tag", body: "Оноо цуглуулах түвшинтэй хөтөлбөр, «2 авбал 1 үнэгүй» мэтийн барааны урамшуулал." },
+    aiemp: { title: "AI ажилтан", icon: "sparkle", body: "Тушаал өгөх, харилцагчид хариулах, хүсэлт гомдол, мэдлэгийн сан, тооллого." },
     wallet: { title: "Wallet pass", icon: "wallet", body: "Харилцагчийн утасны Apple Wallet, Google Wallet-д оноо, түвшин бүхий урамшууллын карт." },
   };
 
   const mod = SECTION_MODULE[current];
   let body: ReactNode;
   if (can(mod) === "locked" && LOCK_COPY[mod]) body = <Locked module={mod} {...LOCK_COPY[mod]!} />;
+  else if (aiSec) body = <AiSectionView sec={aiSec} auth={aiAuth} stats={aiOk ? aiStats : null} regNo={s.merchant.regNo} go={go} />;
   else
-    body = {
+    body = ({
       dashboard: <Dashboard />,
       sales: <Sales />,
       products: <Products />,
@@ -160,7 +171,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
       ai: <Assistant />,
       reports: <Reports />,
       account: <Account />,
-    }[current];
+    } as Partial<Record<Section, ReactNode>>)[current];
 
   const sidebar = (
     <nav className="flex h-full flex-col" aria-label="Үндсэн цэс">
@@ -174,13 +185,53 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
         </div>
       </div>
       <div className="sp-scroll min-h-0 flex-1 px-3 pb-3">
-        <Link href="/ai" className="sp-tap mb-2 flex items-center gap-3 rounded-[12px] bg-accent px-3 py-2.5 text-white">
-          <Icon name="sparkle" size={20} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold">AI ажилтан</span>
-            <span className="block truncate text-[11.5px] opacity-85">Тушаал өгөх, харилцагчид хариулах</span>
-          </span>
-        </Link>
+        {can("aiemp") !== "hidden" && (
+          <div className="mb-2 rounded-[14px] bg-accent-soft/60 p-1">
+            <button
+              type="button"
+              onClick={() => (aiOn ? setAiFold(!aiOpen) : go("ai-command"))}
+              aria-expanded={aiOn ? aiOpen : undefined}
+              className={cx("sp-tap flex h-10 w-full items-center gap-3 rounded-[10px] px-2.5 text-left text-[14.5px] font-semibold", aiSec ? "text-accent" : "text-ink hover:bg-[var(--sp-fill)]")}
+            >
+              <span className="grid size-6 shrink-0 place-items-center rounded-[7px] bg-accent text-white">
+                <Icon name="sparkle" size={15} stroke={2} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">AI ажилтан</span>
+              {aiOn && !aiOpen && aiOk && aiStats && aiStats.humanQueue + aiStats.openTickets > 0 && (
+                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-white tnum">{aiStats.humanQueue + aiStats.openTickets}</span>
+              )}
+              {aiOn ? (
+                <Icon name="chevron" size={16} stroke={2.2} className={cx("text-mute transition-transform", aiOpen && "rotate-90")} />
+              ) : (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-mute" title="Багц дээшлүүлэхэд нээгдэнэ">
+                  <Icon name="lock" size={12} stroke={2.2} />
+                </span>
+              )}
+            </button>
+            {aiOn && aiOpen && (
+              <div className="px-1 pb-1 pt-0.5">
+                <AiStatus me={aiAuth.me} st={aiOk ? aiStats : null} ready={aiOk} onBilling={() => go("ai-billing")} onLogin={() => go(aiSec ? current : "ai-command")} />
+                {AI_NAV.map((n) => {
+                  const b = aiOk ? aiBadge(n.sec, aiStats) : null;
+                  const on = current === n.id;
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => go(n.id)}
+                      aria-current={on ? "page" : undefined}
+                      className={cx("sp-tap flex h-9 w-full items-center gap-2.5 rounded-[9px] px-2 text-left text-[14px]", on ? "bg-paper font-semibold text-accent shadow-[0_0_0_0.5px_var(--sp-sep)]" : "text-ink-2 hover:bg-[var(--sp-fill)]")}
+                    >
+                      <Icon name={n.icon} size={17} className={on ? "text-accent" : "text-mute"} />
+                      <span className="min-w-0 flex-1 truncate">{n.label}</span>
+                      {b && <span className={cx("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-bold text-white tnum", b.tone === "danger" ? "bg-danger" : "bg-accent")}>{b.n}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {nav.map((it) => {
           const st = can(SECTION_MODULE[it.id]);
           if (st === "hidden") return null;
@@ -288,6 +339,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
             {body}
           </main>
         </div>
+        {aiOk && <AiStatsSource onData={setAiStats} />}
         {node}
         <DemoDialog open={demo} onClose={() => setDemo(false)} />
       </MenuCtx.Provider>

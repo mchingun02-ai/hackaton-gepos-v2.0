@@ -21,7 +21,8 @@ export type Module =
   | "crm"
   | "marketing"
   | "chat" // Facebook Messenger чат
-  | "ai" // AI туслах (Gemini)
+  | "ai" // Хуучин AI туслах (Gemini) — идэвхгүй, NEXT_PUBLIC_AI_LEGACY_ASSISTANT=on үед л
+  | "aiemp" // AI ажилтан (/ai-ийн бүх хэсэг портал дотор)
   | "reports"
   | "account"; // Миний бүртгэл (багц, ажилтан)
 

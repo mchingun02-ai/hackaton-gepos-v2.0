@@ -51,3 +51,29 @@
   background: var(--stage);
 }
 .gp2 .tnum { font-variant-numeric: tabular-nums; }
+
+/*
+ * Merchant portal-д шингээсэн AI ажилтан (.gp2.gp2-embed): порталын харанхуй горимыг дагана.
+ * /ai, /count-д нөлөөлөхгүй (gp2-embed классгүй).
+ */
+:root[data-theme="dark"] .gp2.gp2-embed {
+  --accent: var(--b400);
+  --accent-bright: var(--b300);
+  --accent-soft: #0f1d3d;
+  --ink: #f2f4f8;
+  --ink-2: #dce1ea;
+  --paper: #0b0d12;
+  --stage: #111318;
+  --mute: #a3abbd;
+  --line: #3a4152;
+  --hair: #252a36;
+  --ok: #4ade80;
+  --ok-soft: #12240f;
+  --warn: #fbbf24;
+  --warn-soft: #2a2109;
+  --danger: #f87171;
+  --danger-soft: #2a1212;
+  --sp-sep: color-mix(in oklab, #ffffff 10%, transparent);
+  --sp-fill: color-mix(in oklab, var(--b400) 10%, #111318);
+  --sp-fill-2: color-mix(in oklab, var(--b400) 16%, #111318);
+}

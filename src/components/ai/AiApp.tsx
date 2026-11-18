@@ -6,13 +6,14 @@
  * Бүх өгөгдөл /api/agent/* (SQLite) ба Store Plus-ын серверийн төлвөөс шууд ирнэ.
  */
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Icon, type IconName } from "@/components/sp/icons";
 import { cx, Toaster, useTheme } from "@/components/sp/ui";
 import { resyncSp, SpGate, stopSp, useSp, useSyncStatus } from "@/lib/sp/store";
 import { Billing } from "./Billing";
 import { AUTH_EVENT, useLive } from "./client";
 import { Command } from "./Command";
+import { EmbedCtx, type HeadProps } from "./embed";
 import { Contacts } from "./Contacts";
 import { Inbox } from "./Inbox";
 import { Inventory } from "./Inventory";
@@ -230,7 +231,9 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   );
 }
 
-export function Head({ title, sub, actions }: { title: string; sub?: string; actions?: React.ReactNode }) {
+export function Head({ title, sub, actions }: HeadProps) {
+  const embed = useContext(EmbedCtx);
+  if (embed) return embed.head({ title, sub, actions });
   return (
     <div className="flex flex-wrap items-end gap-3 px-4 pb-4 pt-6 md:px-8">
       <div className="min-w-0 flex-1">

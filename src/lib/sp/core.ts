@@ -74,8 +74,8 @@ export function repair(s0: SpState): SpState {
   if (s.products.some((p) => !p.bunaCode && SEED_BUNA[p.id]))
     s = { ...s, products: s.products.map((p) => (p.bunaCode || !SEED_BUNA[p.id] ? p : { ...p, bunaCode: SEED_BUNA[p.id], bunaSource: "tile" as const })) };
   if (!s.products.some((p) => p.id === "p22")) s = { ...s, products: [...s.products, ...SEED_EXTRA] };
-  // Facebook чат цэс нэмэгдсэн — хуучин өгөгдлийн «Админ» эрхэд нэмнэ
-  for (const m of ["chat", "ai"] as const)
+  // Facebook чат, AI ажилтан цэс нэмэгдсэн — хуучин өгөгдлийн «Админ» эрхэд нэмнэ
+  for (const m of ["chat", "ai", "aiemp"] as const)
     if (s.roles.some((r) => r.id === "admin" && r.builtIn && !r.modules.includes(m)))
       s = { ...s, roles: s.roles.map((r) => (r.id === "admin" && r.builtIn && !r.modules.includes(m) ? { ...r, modules: [...r.modules, m] } : r)) };
   if (s.staff.some((x) => !x.regNo && STAFF_REG[x.id]) || !s.merchant.ownerRegNo) {
