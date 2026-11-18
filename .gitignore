@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+.env*
+!.env.example
+next-env.d.ts
+.vercel
+
+# Facebook чатын токен, мессеж (src/lib/fb/server.ts)
+/data
+.next-*

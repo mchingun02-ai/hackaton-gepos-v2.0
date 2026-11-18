@@ -1,0 +1,16 @@
+# Домэйнээ солино (жишээ: ai.geregepos.mn). Домэйнгүй бол <IP>.sslip.io ашиглаж болно.
+{$GEPOS_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 16MB
+	}
+	reverse_proxy 127.0.0.1:3100 {
+		# SSE (шууд мэдэгдэл) буфергүй
+		flush_interval -1
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

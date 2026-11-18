@@ -1,0 +1,53 @@
+/*
+ * GePOS v2.0 брэнд сэдэв (AI ажилтан, тооллого). Эх: «GePOS 2.0 branding.pdf».
+ * Main #0046E2 · Success #1FAE7A · Warning #F5A524 · Error #E5484D · Info #4F7EF5 · Google Sans.
+ * Текстийн өнгийг WCAG AA (4.5:1)-д хүргэхийн тулд туслах өнгийг текстэд бараан хувилбараар хэрэглэнэ.
+ */
+.gp2 {
+  --b50: #eef3ff;
+  --b100: #d9e5ff;
+  --b200: #b3caff;
+  --b300: #85a9ff;
+  --b400: #4f7ef5;
+  --b500: #0046e2;
+  --b600: #003bbd;
+  --b700: #002f96;
+  --b800: #00236e;
+  --b900: #001747;
+  --n0: #ffffff;
+  --n50: #f5f7fb;
+  --n100: #e8ecf4;
+  --n300: #c3c8da;
+  --n500: #8791a8;
+  --n700: #4a5468;
+  --n900: #121a2e;
+  --success: #1fae7a;
+  --warning: #f5a524;
+  --error: #e5484d;
+  --info: #4f7ef5;
+
+  --accent: var(--b500);
+  --accent-bright: var(--b400);
+  --accent-ink: #fff;
+  --accent-soft: var(--b50);
+  --ink: var(--n900);
+  --ink-2: #2a3349;
+  --paper: var(--n0);
+  --stage: var(--n50);
+  --mute: var(--n700);
+  --line: var(--n300);
+  --hair: var(--n100);
+  --ok: #138a5f;
+  --ok-soft: #e6f7f0;
+  --warn: #9a6200;
+  --warn-soft: #fff4dc;
+  --danger: #d23a40;
+  --danger-soft: #fdecec;
+  --sp-sep: color-mix(in oklab, var(--n900) 9%, transparent);
+  --sp-fill: color-mix(in oklab, var(--b500) 6%, var(--n50));
+  --sp-fill-2: color-mix(in oklab, var(--b500) 10%, var(--n50));
+  font-family: var(--font-gsans), system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--stage);
+}
+.gp2 .tnum { font-variant-numeric: tabular-nums; }

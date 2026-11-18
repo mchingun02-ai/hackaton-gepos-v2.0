@@ -1,0 +1,23 @@
+[Unit]
+Description=GePOS v2.0 — AI ажилтан + тооллого (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gepos
+WorkingDirectory=/opt/gepos/app
+EnvironmentFile=/etc/gepos.env
+Environment=NODE_ENV=production
+Environment=SP_DATA_DIR=/var/lib/gepos
+ExecStart=/usr/bin/env node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+Restart=always
+RestartSec=3
+# Нэг процесс заавал (SSE автобус, rate limit, ажлын дараалал санах ойд) — ARCHITECTURE.md §13
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gepos /opt/gepos/app/.next
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

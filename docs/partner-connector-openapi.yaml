@@ -1,0 +1,116 @@
+# Түншийн талын connector-ийн гэрээ (docs/ARCHITECTURE.md §4B.2) — ТҮНШ хэрэгжүүлнэ, Gerege дуудна (LIVE горим).
+# Жишээ хэрэгжүүлэлт (синтетик өгөгдөл, ~150 мөр): examples/partner-connector/server.mjs
+openapi: 3.1.0
+info:
+  title: Gerege AI — Partner Connector contract
+  version: 1.0.0
+  description: |
+    Gerege нь AI асуулт бүрт таны серверээс бараа/үлдэгдэл/нэгтгэсэн борлуулалтыг ШУУД уншина — юу ч хадгалахгүй
+    (хуулбар, кэш, лог үгүй). ПОС-ын харилцагчийн өгөгдлийг уншихгүй (endpoint ч байхгүй).
+
+    Хүсэлт бүр гарын үсэгтэй:
+      X-Gerege-Timestamp: <unix ms>
+      X-Gerege-Request-Id: <uuid>            — давхардлыг татгалзана
+      X-Gerege-Signature: v1=hex(HMAC-SHA256(secret, ts + "\n" + METHOD + "\n" + pathname?query + "\n" + hex(sha256(body))))
+    `secret` — PUT /api/v1/partner/connector-ийн хариуд НЭГ удаа ирнэ. ±5 минутын цонхноос гадуурх эсвэл буруу
+    гарын үсэгтэй хүсэлтэд 401 буцаана. Хугацаа: 4 сек (GET-д 1 дахин оролдлого), хариу ≤ 1 МБ / 200 мөр, 429-ийг хүндэтгэнэ.
+    URL: https:// + нийтийн IP (SSRF шүүлт). Мөнгө ₮ бүхэл, цаг ISO-8601 UTC.
+servers:
+  - url: https://pos.partner.example/gerege
+security:
+  - geregeSignature: []
+paths:
+  /health:
+    get:
+      summary: Холболтын шалгалт
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { ok: { const: true }, version: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /merchants/{ext}/products:
+    parameters: [{ $ref: "#/components/parameters/ext" }]
+    get:
+      summary: Бараа (list_products, зураг тааруулах, тооллого эхлүүлэх)
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: barcode, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: "#/components/schemas/Product" } }, next: { type: [string, "null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Мерчант олдсонгүй }
+    post:
+      summary: (Заавал биш) зургаар бүртгэсэн бараа үүсгэх
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } } }
+      responses:
+        "201": { description: Үүссэн бараа, content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } } }
+  /merchants/{ext}/products/{id}:
+    parameters: [{ $ref: "#/components/parameters/ext" }, { name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Нэг бараа
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } } }
+        "404": { description: Олдсонгүй }
+  /merchants/{ext}/stock:
+    parameters: [{ $ref: "#/components/parameters/ext" }]
+    get:
+      summary: Үлдэгдэл (system_qty_at_count)
+      parameters: [{ name: productIds, in: query, description: таслалаар, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Stock" } } } } } } }
+  /merchants/{ext}/sales/summary:
+    parameters: [{ $ref: "#/components/parameters/ext" }]
+    get:
+      summary: Нэгтгэсэн борлуулалт (түүхий баримт, харилцагч татахгүй)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: groupBy, in: query, required: true, schema: { enum: [day, product] } }
+      responses:
+        "200": { description: "key = YYYY-MM-DD (Asia/Ulaanbaatar) эсвэл барааны нэр", content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { key: { type: string }, qty: { type: number }, total: { type: integer }, count: { type: integer } } } } } } } } }
+  /merchants/{ext}/store:
+    parameters: [{ $ref: "#/components/parameters/ext" }]
+    get:
+      summary: Дэлгүүрийн мэдээлэл (get_store_info)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { name: { type: string }, hours: { type: string }, deliveryEnabled: { type: boolean } } } } } }
+  /merchants/{ext}/stock-adjustments:
+    parameters: [{ $ref: "#/components/parameters/ext" }]
+    post:
+      summary: Батлагдсан тооллогын засвар (delta) — ПОС нөөцөө шинэчилнэ
+      parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string }, description: Ижил түлхүүрээр давтвал анхны хариуг буцаана }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, required: [productId, delta, reason], properties: { productId: { type: string }, delta: { type: number }, reason: { enum: [count, damage, expiry, manual] }, ref: { type: [string, "null"] }, by: { type: string } } } } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { applied: { type: array, items: { type: object, properties: { id: { type: string }, productId: { type: string }, delta: { type: number }, at: { type: string, format: date-time } } } } } } } } }
+components:
+  securitySchemes:
+    geregeSignature: { type: apiKey, in: header, name: X-Gerege-Signature }
+  parameters:
+    ext: { name: ext, in: path, required: true, description: Түншийн мерчантын id (POST /partner/tenants-ийн extMerchantId), schema: { type: string, pattern: "^[A-Za-z0-9_.:-]{1,64}$" } }
+  responses:
+    Unauthorized: { description: Гарын үсэг буруу / хугацаа хэтэрсэн / давхар Request-Id }
+  schemas:
+    Product:
+      type: object
+      required: [id, name, price]
+      properties:
+        id: { type: string }
+        extId: { type: string }
+        sku: { type: string }
+        barcodes: { type: array, items: { type: string } }
+        name: { type: string }
+        brand: { type: string }
+        category: { type: string }
+        unit: { enum: [pcs, kg, l, pack] }
+        price: { type: integer, description: ₮ бүхэл }
+        cost: { type: integer }
+        active: { type: boolean }
+        imageUrl: { type: string, pattern: "^https://" }
+        taxCode: { type: string, description: БҮНА }
+        updatedAt: { type: string, format: date-time }
+    Stock:
+      type: object
+      properties: { productId: { type: string }, location: { type: string, default: main }, qty: { type: number }, minQty: { type: number }, updatedAt: { type: string, format: date-time } }

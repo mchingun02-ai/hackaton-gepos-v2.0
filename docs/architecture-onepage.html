@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<title>GePOS v2.0 — AI ажилтан + Тооллого: архитектур (нэг хуудас)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  :root {
+    --b50:#EEF3FF; --b100:#D9E5FF; --b200:#B3CAFF; --b300:#85A9FF; --b400:#4F7EF5; --b500:#0046E2; --b600:#003BBD; --b700:#002F96; --b800:#00236E; --b900:#001747;
+    --n0:#FFFFFF; --n50:#F5F7FB; --n100:#E8ECF4; --n300:#C3C8DA; --n500:#8791A8; --n700:#4A5468; --n900:#121A2E;
+    --ok:#1FAE7A; --warn:#F5A524; --err:#E5484D; --info:#4F7EF5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 297mm; height: 210mm; background: var(--n0); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Google Sans", "Noto Sans", system-ui, sans-serif; color: var(--n900); font-size: 7.4pt; line-height: 1.28; }
+  .page { width: 297mm; height: 210mm; padding: 7mm 8mm 6mm; display: grid; grid-template-rows: 13mm 1fr 33mm; gap: 3mm; overflow: hidden; }
+
+  /* толгой */
+  header { display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5mm solid var(--b500); padding-bottom: 2mm; }
+  .brand { display: flex; align-items: center; gap: 3mm; }
+  .mark { width: 9mm; height: 9mm; border-radius: 2.2mm; background: var(--b500); color: #fff; font-weight: 700; font-size: 10pt; display: grid; place-items: center; }
+  h1 { white-space: nowrap; font-size: 12.5pt; font-weight: 700; letter-spacing: -0.01em; color: var(--b900); }
+  h1 span { color: var(--b500); }
+  .sub { white-space: nowrap; font-size: 7.2pt; color: var(--n700); margin-top: 0.4mm; }
+  .tags { display: flex; gap: 1.5mm; }
+  .tag { border: 0.25mm solid var(--b200); background: var(--b50); color: var(--b700); border-radius: 10mm; padding: 0.9mm 2.4mm; font-size: 7pt; font-weight: 500; white-space: nowrap; }
+
+  /* гол хэсэг: 5 багана + сумны зай */
+  main { display: grid; grid-template-columns: 42mm 6mm 46mm 6mm minmax(0,1fr) 6mm 45mm 6mm 50mm; min-height: 0; }
+  .col { display: flex; flex-direction: column; gap: 1.6mm; min-height: 0; min-width: 0; }
+  .cap { font-size: 6.6pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--n500); display: flex; align-items: center; gap: 1.5mm; }
+  .cap b { display: inline-grid; place-items: center; width: 4mm; height: 4mm; border-radius: 50%; background: var(--b500); color: #fff; font-size: 6.4pt; letter-spacing: 0; }
+  .box { border: 0.25mm solid var(--n100); background: var(--n0); border-radius: 1.8mm; padding: 1.5mm 2mm; flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  .box h3 { font-size: 8pt; font-weight: 700; color: var(--n900); }
+  .box p { color: var(--n700); font-size: 6.9pt; }
+  .ch { border-left: 0.9mm solid var(--b300); background: var(--n50); border-color: var(--n100); border-left-color: var(--b300); }
+  .ch.ext { border-left-color: var(--n500); }
+  .ch.staff { border-left-color: var(--b600); }
+  .key { display: inline-block; margin-top: 0.6mm; font-size: 6.3pt; font-weight: 500; color: var(--b700); background: var(--b100); border-radius: 1mm; padding: 0.2mm 1.2mm; }
+  .key.k2 { color: #7a4d00; background: #FFF1D6; }
+  .key.k3 { color: #0b6b4a; background: #DDF5EA; }
+  .key.k4 { color: var(--n700); background: var(--n100); }
+
+  .gate { background: var(--b900); color: #fff; border-radius: 2.2mm; padding: 2.4mm; flex: 1; display: flex; flex-direction: column; gap: 1.6mm; }
+  .gate h2 { font-size: 9.6pt; font-weight: 700; }
+  .gate .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 6.5pt; background: rgba(255,255,255,.08); border: 0.2mm solid rgba(255,255,255,.18); border-radius: 1.4mm; padding: 1.4mm 1.6mm; color: var(--b100); line-height: 1.4; }
+  .gate ul { list-style: none; display: flex; flex-direction: column; gap: 0.9mm; }
+  .gate li { display: flex; gap: 1.4mm; align-items: flex-start; font-size: 6.9pt; color: #E3EAFB; }
+  .dot { flex: none; width: 2.1mm; height: 2.1mm; border-radius: 50%; margin-top: 0.6mm; }
+  .gate h4 { font-size: 6.4pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--b300); font-weight: 700; }
+  .gate .no { background: rgba(229,72,77,.16); border: 0.2mm solid rgba(229,72,77,.55); border-radius: 1.4mm; padding: 1.1mm 1.5mm; font-size: 6.7pt; color: #FFD9DA; }
+
+  .svc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6mm; flex: 1; min-height: 0; }
+  .svc { border: 0.25mm solid var(--b200); background: var(--b50); border-radius: 1.8mm; padding: 1.5mm 1.9mm; display: flex; flex-direction: column; justify-content: center; }
+  .svc h3 { font-size: 7.9pt; font-weight: 700; color: var(--b800); }
+  .svc p { font-size: 6.7pt; color: var(--n700); }
+  .svc.wide { grid-column: 1 / -1; }
+  .svc.hero { background: var(--b500); border-color: var(--b500); }
+  .svc.hero h3, .svc.hero p { color: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.8mm; margin-top: 0.8mm; }
+  .chip { font-size: 6.2pt; font-weight: 500; background: rgba(255,255,255,.18); color: #fff; border-radius: 5mm; padding: 0.2mm 1.5mm; white-space: nowrap; }
+  .svc.inv { background: #E9F8F1; border-color: #A9E2CB; }
+  .svc.inv h3 { color: #0b6b4a; }
+
+  .ad { border: 0.3mm solid var(--b500); background: var(--n0); border-radius: 1.8mm; padding: 1.6mm 2mm; }
+  .ad h3 { font-size: 7.9pt; font-weight: 700; color: var(--b600); }
+  .ad p { font-size: 6.7pt; color: var(--n700); }
+  .ad.gen { border-style: dashed; }
+  .store { border: 0.25mm solid var(--n300); background: var(--n50); border-radius: 1.8mm; padding: 1.8mm 2mm; flex: 1; display: flex; flex-direction: column; gap: 1.1mm; }
+  .store h3 { font-size: 7.9pt; font-weight: 700; }
+  .rows { display: flex; flex-direction: column; gap: 0.6mm; }
+  .row { display: grid; grid-template-columns: 9mm 1fr; font-size: 6.2pt; border-radius: 0.8mm; overflow: hidden; font-family: ui-monospace, Menlo, monospace; }
+  .row i { font-style: normal; color: #fff; padding: 0.35mm 1mm; font-weight: 700; }
+  .row span { padding: 0.35mm 1.2mm; color: var(--n700); background: #fff; white-space: nowrap; overflow: hidden; }
+  .row.a i { background: var(--b500); } .row.b i { background: var(--ok); } .row.c i { background: var(--warn); color: #3d2a00; }
+  .store p { font-size: 6.6pt; color: var(--n700); }
+
+  .extbox { border: 0.25mm solid var(--n300); border-radius: 1.8mm; padding: 1.8mm 2mm; background: #fff; }
+  .extbox h3 { font-size: 7.9pt; font-weight: 700; }
+  .extbox p { font-size: 6.6pt; color: var(--n700); }
+  .extbox.qwen { border: 0.35mm solid var(--b500); background: var(--b50); flex: 1; display: flex; flex-direction: column; gap: 1mm; }
+  .models { display: grid; grid-template-columns: 1fr; gap: 0.6mm; margin-top: 0.4mm; }
+  .models div { display: flex; flex-direction: column; gap: 0; background: #fff; border: 0.2mm solid var(--b200); border-radius: 1mm; padding: 0.4mm 1.3mm; font-size: 6.3pt; }
+  .models b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; color: var(--b700); white-space: nowrap; }
+  .models span { color: var(--n700); }
+  .down { text-align: center; color: var(--b500); font-size: 8pt; line-height: 1; font-weight: 700; }
+
+  .gut { display: flex; align-items: center; justify-content: center; }
+  .gut svg { width: 6mm; height: 100%; }
+
+  /* хөл */
+  footer { display: grid; grid-template-columns: 1.55fr 1fr 0.95fr; gap: 3mm; min-height: 0; }
+  .panel { border: 0.25mm solid var(--n100); border-radius: 2mm; padding: 2mm 2.6mm; background: var(--n50); min-height: 0; }
+  .panel h2 { font-size: 8.2pt; font-weight: 700; color: var(--b800); margin-bottom: 1mm; display: flex; align-items: center; gap: 1.5mm; }
+  .panel.iso { background: var(--b50); border-color: var(--b200); }
+  .iso ol { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 0.7mm 4mm; counter-reset: n; }
+  .iso li { counter-increment: n; display: flex; gap: 1.4mm; font-size: 6.9pt; color: var(--n900); }
+  .iso li::before { content: counter(n); flex: none; width: 3.3mm; height: 3.3mm; border-radius: 50%; background: var(--b500); color: #fff; font-size: 6pt; font-weight: 700; display: grid; place-items: center; margin-top: 0.1mm; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8mm 3mm; font-size: 6.8pt; color: var(--n700); }
+  .legend div { display: flex; align-items: center; gap: 1.5mm; }
+  .sw { flex: none; width: 5mm; height: 2.8mm; border-radius: 0.8mm; }
+  .rules { display: flex; flex-direction: column; gap: 0.8mm; font-size: 6.8pt; color: var(--n700); }
+  .rules div { display: flex; gap: 1.4mm; }
+  .tick { flex: none; color: var(--ok); font-weight: 700; }
+  .foot { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="brand">
+      <div class="mark">G</div>
+      <div>
+        <h1>GePOS <span>v2.0</span> · AI ажилтан + Бараа тооллого — архитектур</h1>
+        <div class="sub">Мерчант бүрийн AI зөвхөн өөрийн өгөгдөл дээр · Түнш ПОС нэг удаа холбогдоно · ECS, Node 26 · MVP 11/20</div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="tag">Зөвхөн Qwen · Model Studio</span>
+      <span class="tag">QPay sandbox · урьдчилсан төлбөр</span>
+      <span class="tag">Seed өгөгдөл</span>
+      <span class="tag">2026-11-18 · v1.0</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. Сувгууд -->
+    <section class="col">
+      <div class="cap"><b>1</b>Сувгууд</div>
+      <div class="box ch"><h3>Facebook Messenger</h3><p>Page ↔ нэг мерчант · AI горим: унтраалттай / туршигч / бүгд</p><span class="key k4">Meta гарын үсэг → page_id</span></div>
+      <div class="box ch"><h3>Вэб widget · чат</h3><p>Сайтад суулгах iframe, QR холбоос</p><span class="key k2">widget + visitor токен (HMAC)</span></div>
+      <div class="box ch"><h3>Дуудлага (яриа)</h3><p>Монгол яриаг сонсож текстээр хариулна</p><span class="key k2">visitor токен</span></div>
+      <div class="box ch staff"><h3>Захирлын самбар /ai</h3><p>Тушаал, харилцаа, мэдлэгийн сан, хэрэглээ</p><span class="key">session cookie</span></div>
+      <div class="box ch staff"><h3>Тооллогын PWA /count</h3><p>Зураг · баркод · гар тоо · батлах</p><span class="key">QR холболт → PIN → session</span></div>
+      <div class="box ch staff"><h3>GePOS v2.0 ПОС · портал</h3><p>Касс, бараа, захиалга (SSE-ээр шууд)</p><span class="key">session cookie</span></div>
+      <div class="box ch ext" style="border-left-color:#1FAE7A"><h3>Түнш ПОС · бусад касс</h3><p>Dayansoft г.м: нэг удаа холбоно</p><span class="key k3">gpk_ түнш түлхүүр · embed токен</span></div>
+      <div class="box ch ext"><h3>MCP клиент</h3><p>Гаднын AI агент (JSON-RPC)</p><span class="key k3">API key (sha256)</span></div>
+    </section>
+
+    <div class="gut"><svg viewBox="0 0 26 400" preserveAspectRatio="none"><defs><marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#0046E2"/></marker></defs>
+      <g stroke="#0046E2" stroke-width="1.6" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"><path d="M2 45 H22"/><path d="M2 95 H22"/><path d="M2 145 H22"/><path d="M2 195 H22"/><path d="M2 245 H22"/><path d="M2 295 H22"/><path d="M2 345 H22"/><path d="M2 385 H22"/></g></svg></div>
+
+    <!-- 2. Хаалга -->
+    <section class="col">
+      <div class="cap"><b>2</b>API хаалга · нэвтрэлт</div>
+      <div class="gate">
+        <h2 style="font-size:8.8pt;white-space:nowrap">requireTenant(req, scope)</h2>
+        <div class="mono">TenantContext {<br>&nbsp;tenantId ← серверээс л<br>&nbsp;principal · scopes<br>&nbsp;db &nbsp;→ :tenant-тай query<br>&nbsp;pos → адаптер<br>}</div>
+        <h4>Таних 5 арга</h4>
+        <ul>
+          <li><span class="dot" style="background:#B3CAFF"></span><span><b>Session cookie</b> — HttpOnly, sha256 хадгална; үүрэг: эзэн / менежер / ажилтан</span></li>
+          <li><span class="dot" style="background:#1FAE7A"></span><span><b>API key</b> gai_… — scope: mcp, connector, inventory</span></li>
+          <li><span class="dot" style="background:#F5A524"></span><span><b>Widget / visitor токен</b> — HMAC гарын үсэгтэй, РД агуулахгүй, эргүүлж болно</span></li>
+          <li><span class="dot" style="background:#C3C8DA"></span><span><b>Webhook</b> — Meta гарын үсэг; QPay-г дахин шалгана</span></li>
+          <li><span class="dot" style="background:#fff"></span><span><b>Partner key</b> gpk_… — зөвхөн мерчант үүсгэх, түлхүүр, embed/SSO токен, нийлбэр тоо. Өгөгдөл уншихгүй</span></li>
+        </ul>
+        <div class="no"><b>Устгасан:</b> x-sp-merchant толгой, ?m=&lt;РД&gt; — хүсэлтээс tenant хэзээ ч уншихгүй</div>
+        <h4>Мөн энд</h4>
+        <ul>
+          <li><span class="dot" style="background:#4F7EF5"></span><span>Rate limit · Idempotency-Key · аудит (actions)</span></li>
+          <li><span class="dot" style="background:#4F7EF5"></span><span>/api/v1 + OpenAPI · /api/v1/partner · /embed · /api/mcp</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gut" style="flex-direction:column;position:relative"><span style="position:absolute;top:44%;font-size:7pt;font-weight:700;color:#002F96">ctx</span><svg viewBox="0 0 26 400" preserveAspectRatio="none"><g stroke="#0046E2" stroke-width="2.2" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"><path d="M2 200 H22"/></g></svg></div>
+
+    <!-- 3. Үйлчилгээ -->
+    <section class="col">
+      <div class="cap"><b>3</b>Үйлчилгээ — бүгд ижил TenantContext-ээр</div>
+      <div class="svc-grid">
+        <div class="svc hero wide">
+          <h3>Үүрэгт туслахууд → агентын давталт (Qwen tool calling, ≤6 алхам)</h3>
+          <p>Захирлын туслах тушаалыг зөв туслахад чиглүүлнэ. Туслах = хэрэгслийн дэд олонлог + заавар + батлуулах дүрэм.</p>
+          <div class="chips"><span class="chip">Харилцагчийн үйлчилгээ</span><span class="chip">Борлуулалт, захиалга</span><span class="chip">Нөөц, тооллого</span><span class="chip">Маркетинг</span><span class="chip">Санхүү, тайлан</span><span class="chip">Татвар, и-Баримт</span><span class="chip">Захирлын туслах</span></div>
+        </div>
+        <div class="svc"><h3>Хэрэгслүүд (tools)</h3><p>24 + тооллогын 5. Tenant параметргүй; эрсдэлтэй үйлдлийг хүн батална.</p></div>
+        <div class="svc"><h3>Мэдлэгийн сан</h3><p>Вектор + BM25. Автомат баяжуулалт: бараа-үнэ, урамшуулал, FAQ (эзэн батална), PII цэвэрлэнэ.</p></div>
+        <div class="svc inv"><h3>Тооллого</h3><p>Session → зураг (нүүрэн тоо × гүн), хайрцаг, жин, баркод → зөрүү, босго → менежер батлах → delta засвар.</p></div>
+        <div class="svc inv"><h3>Зургаар бүртгэх · цоорхой</h3><p>Нэр, брэнд, хэмжээ, баркод → ноорог → батлах. Тавиурын хоосон зай, захиалах санал.</p></div>
+        <div class="svc"><h3>CRM · Messenger</h3><p>Карт, гомдол, ажилтанд шилжүүлэх. Page токен AES-GCM; AI зөвхөн 24ц дотор.</p></div>
+        <div class="svc" style="background:#fff;border:0.3mm solid #1FAE7A"><h3 style="color:#0b6b4a">Түнш (partner) давхарга</h3><p>Мерчант үүсгэх → «AI холбох» товч → нөхцөл → QPay-ээр өөрөө кредит авна. Түншийн брэндээр. Түнш ≠ мерчант.</p></div>
+        <div class="svc"><h3>Төлбөр · кредит</h3><p>Урьдчилж цэнэглэнэ; 0 бол AI зогсоно. Эхлээд нөөцөлж, алдаанд буцаана.</p></div>
+        <div class="svc"><h3>Хэрэглээний аналитик</h3><p>Үлдэгдлийн хэмжигч, өдрийн зарцуулалт, хүрэх хоног, сувгаар / үйлдлээр.</p></div>
+      </div>
+    </section>
+
+    <div class="gut"><svg viewBox="0 0 26 400" preserveAspectRatio="none"><g stroke="#0046E2" stroke-width="1.8" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"><path d="M2 45 H22"/><path d="M2 280 H22"/></g></svg></div>
+
+    <!-- 4. Адаптер + хадгалалт -->
+    <section class="col">
+      <div class="cap"><b>4</b>ПОС адаптер</div>
+      <div class="ad"><h3>GePOS v2.0 (үндсэн)</h3><p>Store Plus core → sp_state (rev, аудит) → SSE-ээр ПОС, порталд шууд</p></div>
+      <div class="ad" style="border-color:#1FAE7A"><h3 style="color:#0b6b4a">Live холболт (түншийн анхдагч)</h3><p>Түншийн серверээс тухайн агшинд уншина, гарын үсэгтэй, 4 сек. <b>Хуулбарлахгүй.</b></p></div>
+      <div class="ad gen"><h3>Sync (сонголтоор)</h3><p>/api/v1-ээр түлхэнэ → c_* хүснэгт; түнш өөрөө асаасан үед л</p></div>
+      <div class="down">▼</div>
+      <div class="cap"><b>5</b>Хадгалалт · SQLite (WAL)</div>
+      <div class="store">
+        <h3>Мөр бүр tenant-тай</h3>
+        <div class="rows">
+          <div class="row a"><i>A</i><span>kb · crm · inv_*</span></div>
+          <div class="row b"><i>B</i><span>kb · crm · inv_*</span></div>
+          <div class="row c"><i>C</i><span>kb · crm · usage</span></div>
+        </div>
+        <p><b>tdb(ctx)</b>: SQL-д <b>:tenant</b> байхгүй бол ажиллахгүй.</p>
+        <p><b>Шифрлэлт</b>: яриа, мэдлэгийн сан, вектор, зураг — tenant бүрийн түлхүүрээр (AES-GCM). Түлхүүр устгавал уншигдахгүй.</p>
+        <p>Ил үлдэх нь зөвхөн id, тоо, кредит. Түнш кредитийн нийлбэр л харна.</p>
+        <p style="color:#8791A8">Өсөх зам: tenant бүрт файл → Postgres + RLS</p>
+      </div>
+    </section>
+
+    <div class="gut"><svg viewBox="0 0 26 400" preserveAspectRatio="none"><g stroke="#4A5468" stroke-width="1.6" fill="none" marker-end="url(#ah2)" vector-effect="non-scaling-stroke" stroke-dasharray="5 3"><path d="M2 110 H22"/><path d="M2 300 H22"/><path d="M2 365 H22"/></g><defs><marker id="ah2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#4A5468"/></marker></defs></svg></div>
+
+    <!-- 5. Гадаад -->
+    <section class="col">
+      <div class="cap"><b>6</b>Гадаад үйлчилгээ</div>
+      <div class="extbox qwen">
+        <h3>TokenHub gateway</h3>
+        <p>api.tokenhub.mn/v1 · OpenAI-тэй нийцтэй</p>
+        <div class="down">▼</div>
+        <h3>Alibaba Cloud Model Studio — Qwen</h3>
+        <div class="models">
+          <div><b>qwen3.6-plus</b><span>агент · зураг унших</span></div>
+          <div><b>qwen-flash</b><span>чиглүүлэгч · карт · FAQ</span></div>
+          <div><b>text-embedding-v4</b><span>мэдлэгийн сан</span></div>
+          <div><b>qwen3.5-omni-flash</b><span>яриа → текст</span></div>
+          <div><b>qwen-audio-3.1-tts</b><span>дуу · хүлээгдэж буй</span></div>
+        </div>
+        <p style="margin-top:auto"><b>Өөр provider байхгүй</b> — гарах хаягийг тестээр шалгана.</p>
+      </div>
+      <div class="extbox"><h3>QPay — sandbox</h3><p>Нэхэмжлэх → payment/check → кредит нэг удаа нэмэгдэнэ</p></div>
+      <div class="extbox"><h3>Meta Graph API</h3><p>Туршигч горим: зөвхөн сонгосон хүнд AI хариулна</p></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="panel iso">
+      <h2>Тусгаарлалт — кодоор албадсан, prompt-оор биш</h2>
+      <ol>
+        <li>Tenant зөвхөн session / түлхүүр / гарын үсэгтэй токеноос тодорхойлогдоно.</li>
+        <li>AI хэрэгсэлд tenant параметр байхгүй — загвар өөр дэлгүүрийг «сонгож» чадахгүй.</li>
+        <li>Query бүр :tenant-тай; өөр дэлгүүрийн id → «олдсонгүй» (404).</li>
+        <li>Мессеж, баримт, зургийн бичвэр = өгөгдөл, заавар биш.</li>
+        <li>Түнш ≠ мерчант: partner key яриа, мэдлэгийн сан, харилцагчийг уншихгүй.</li>
+        <li>Автомат тест: хуурамч толгой/токен, prompt injection, зэрэгцээ ачаалал.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h2>Тэмдэглэгээ</h2>
+      <div class="legend">
+        <div><span class="sw" style="background:#001747"></span>Нэвтрэлт, tenant context</div>
+        <div><span class="sw" style="background:#0046E2"></span>AI давхарга</div>
+        <div><span class="sw" style="background:#EEF3FF;border:0.25mm solid #B3CAFF"></span>Үйлчилгээ</div>
+        <div><span class="sw" style="background:#E9F8F1;border:0.25mm solid #A9E2CB"></span>Тооллогын модуль</div>
+        <div><span class="sw" style="background:#fff;border:0.3mm solid #0046E2"></span>Адаптер (үндсэн)</div>
+        <div><span class="sw" style="background:#fff;border:0.3mm dashed #0046E2"></span>Адаптер (бусад ПОС)</div>
+        <div><svg width="19" height="8" viewBox="0 0 19 8"><path d="M0 4 H14" stroke="#0046E2" stroke-width="1.5"/><path d="M12 0 L19 4 L12 8 z" fill="#0046E2"/></svg>Дотоод дуудлага (ctx-тэй)</div>
+        <div><span class="sw" style="background:#fff;border:0.3mm solid #1FAE7A"></span>Түнш · Live горим</div>
+        <div><svg width="19" height="8" viewBox="0 0 19 8"><path d="M0 4 H14" stroke="#4A5468" stroke-width="1.5" stroke-dasharray="3 2"/><path d="M12 0 L19 4 L12 8 z" fill="#4A5468"/></svg>Гадаад руу (HTTPS)</div>
+      </div>
+    </div>
+    <div class="panel" style="background:#E9F8F1;border-color:#A9E2CB">
+      <h2 style="color:#0b6b4a">Түншийн өгөгдөл Gerege-д үлдэхгүй</h2>
+      <div class="rules">
+        <div><span class="tick">✓</span><span>ПОС-ын өгөгдөл: Live — хадгалахгүй, зөвхөн тухайн хариултад</span></div>
+        <div><span class="tick">✓</span><span>Хадгалах зүйл шифрлэгдсэн; хугацаатай; нэг дуудлагаар бүрэн устгана</span></div>
+        <div><span class="tick">✓</span><span>Оператор харахгүй: логт зөвхөн id, тоо; сургалт, аналитикт ашиглахгүй</span></div>
+        <div><span class="tick">✓</span><span>Түнш хандалтын түүхээ уншина (хэн, хэзээ, ямар төрөл)</span></div>
+      </div>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
