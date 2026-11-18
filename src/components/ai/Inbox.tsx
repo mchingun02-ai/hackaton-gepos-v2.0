@@ -6,69 +6,135 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/sp/icons";
-import { Badge, Btn, cx, Empty, toast } from "@/components/sp/ui";
+import { Badge, Btn, cx, Empty, Notice, toast } from "@/components/sp/ui";
 import { Head } from "./AiApp";
 import { aj, ago, CHANNEL, hm, useLive } from "./client";
+import { Comments, FbRow, FbThreadView, usePoll, type AiSettings, type FbStatus, type FbThread } from "./InboxFb";
 import { Md } from "./Md";
 
-type Conv = { id: string; channel: string; status: "ai" | "human" | "closed"; title: string | null; last_text: string | null; last_at: number; contact_name: string | null; contact_phone: string | null };
+type Conv = { id: string; channel: string; ext_id?: string | null; status: "ai" | "human" | "closed"; title: string | null; last_text: string | null; last_at: number; contact_name: string | null; contact_phone: string | null };
 type Step = { title: string; summary: string; ok: boolean; status: string };
 type Msg = { id: string; role: "user" | "assistant" | "staff" | "system"; text: string; meta: { steps?: Step[]; seconds?: number; by?: string; broadcast?: boolean } | null; at: number };
 type Contact = { id: string; name: string | null; phone: string | null; address: string | null; summary: string | null; interests: string[]; tags: string[]; sentiment: string | null };
 
 const STATUS = { ai: { label: "AI хариулж байна", tone: "ok" as const }, human: { label: "Ажилтан хүлээж байна", tone: "warn" as const }, closed: { label: "Хаагдсан", tone: "gray" as const } };
 
+type Tab = "all" | "fb" | "comment" | "web" | "voice";
+const TABS: [Tab, string][] = [
+  ["all", "Бүгд"],
+  ["fb", "Messenger"],
+  ["comment", "Comment"],
+  ["web", "Вэб чат"],
+  ["voice", "Дуудлага"],
+];
+type Item = { key: string; at: number; kind: "ai"; conv: Conv } | { key: string; at: number; kind: "fb"; t: FbThread; conv?: Conv };
+
 export function Inbox() {
-  const [ch, setCh] = useState("");
-  const { data } = useLive<{ conversations: Conv[] }>(`/api/agent/conversations${ch ? `?channel=${ch}` : ""}`, ["message", "conv", "contacts"]);
+  const [tab, setTab] = useState<Tab>("all");
+  const { data } = useLive<{ conversations: Conv[] }>(`/api/agent/conversations`, ["message", "conv", "contacts"]);
+  const fbs = useLive<FbStatus>("/api/fb/status", []);
+  const connected = !!fbs.data?.page;
+  // Page-ийн бүх Messenger чат — 8 сек тутам (сервер syncIfDue-ээр Facebook-аас хурдны хязгаартай татна)
+  const fbt = usePoll<{ threads: FbThread[] }>(connected && (tab === "all" || tab === "fb") ? "/api/fb/threads?state=all" : null, 8000);
+  const st = useLive<AiSettings>("/api/agent/settings", ["settings"]);
   const [sel, setSel] = useState<string | null>(null);
-  const list = data?.conversations ?? [];
+
+  const convs = data?.conversations ?? [];
+  const fbConv = new Map(convs.filter((c) => c.channel === "fb" && c.ext_id).map((c) => [c.ext_id!, c]));
+  const fbItems: Item[] = connected ? (fbt.data?.threads ?? []).map((t) => ({ key: `fb:${t.psid}`, at: t.lastAt, kind: "fb", t, conv: fbConv.get(t.psid) })) : [];
+  const aiItems = (pred: (c: Conv) => boolean): Item[] => convs.filter(pred).map((c) => ({ key: `ai:${c.id}`, at: c.last_at, kind: "ai", conv: c }));
+  const list: Item[] =
+    tab === "all"
+      ? [...fbItems, ...aiItems((c) => c.channel !== "fb" || !connected)].sort((a, b) => b.at - a.at)
+      : tab === "fb"
+        ? connected
+          ? fbItems
+          : aiItems((c) => c.channel === "fb")
+        : tab === "comment"
+          ? []
+          : aiItems((c) => c.channel === tab);
   // том дэлгэц дээр эхний яриаг шууд харуулна (утсан дээр жагсаалт)
-  const shown = sel ?? list[0]?.id ?? null;
+  const shown = sel && list.some((i) => i.key === sel) ? sel : (list[0]?.key ?? null);
+  const item = list.find((i) => i.key === shown);
+  const mode = st.data ? { mode: st.data.settings.fbMode, testers: st.data.settings.fbTesters, allowAll: !!st.data.fb?.allowAll } : null;
 
   return (
     <div>
       <Head title="Харилцаа" sub="Харилцагч бүрт AI мэдлэгийн сан дээр тулгуурлаж хариулна. Хүссэн үедээ ярианд орж болно." />
-      <div className="mx-auto grid max-w-[1320px] gap-4 px-4 pb-8 md:px-8 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className={cx("rounded-[18px] bg-paper shadow-[0_0_0_0.5px_var(--sp-sep)]", sel && "hidden lg:block")}>
-          <div className="flex gap-1.5 overflow-x-auto p-3">
-            {[["", "Бүгд"], ["fb", "Messenger"], ["web", "Вэб чат"], ["voice", "Дуудлага"]].map(([id, l]) => (
-              <button key={id} type="button" onClick={() => setCh(id)} className={cx("sp-tap shrink-0 rounded-full px-3 py-1.5 text-[13px] font-semibold", ch === id ? "bg-ink text-paper" : "bg-[var(--sp-fill)]")}>
-                {l}
-              </button>
-            ))}
-          </div>
-          {!list.length && <Empty icon="chat" title="Яриа алга" body="Харилцагч вэб чат, дуудлага эсвэл Messenger-ээр бичихэд энд харагдана." />}
-          <div className="max-h-[calc(100dvh-230px)] overflow-y-auto">
-            {list.map((c) => (
-              <button key={c.id} type="button" onClick={() => setSel(c.id)} className={cx("sp-row flex w-full gap-3 border-t border-[var(--sp-sep)] px-4 py-3 text-left", shown === c.id && "bg-accent-soft")}>
-                <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--sp-fill)]">
-                  <Icon name={CHANNEL[c.channel]?.icon ?? "chat"} size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[14.5px] font-semibold">{c.contact_name || c.title || (c.contact_phone ?? "Шинэ харилцагч")}</span>
-                    <span className="ml-auto shrink-0 text-[12px] text-mute">{ago(c.last_at)}</span>
-                  </div>
-                  <div className="truncate text-[13px] text-mute">{c.last_text}</div>
-                  <div className="mt-1 flex items-center gap-1.5 text-[11.5px]">
-                    <span className="text-mute">{CHANNEL[c.channel]?.label}</span>
-                    <span className={cx("rounded-full px-1.5 py-px font-semibold", c.status === "ai" ? "bg-ok-soft text-ok" : c.status === "human" ? "bg-warn-soft text-warn" : "bg-[var(--sp-fill)] text-mute")}>{STATUS[c.status].label}</span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+      <div className="mx-auto max-w-[1320px] px-4 md:px-8">
+        <div className="flex gap-1.5 overflow-x-auto pb-3" role="tablist">
+          {TABS.map(([id, l]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => {
+                setTab(id);
+                setSel(null);
+              }}
+              className={cx("sp-tap shrink-0 rounded-full px-3.5 py-1.5 text-[13.5px] font-semibold", tab === id ? "bg-ink text-paper" : "bg-[var(--sp-fill)]")}
+            >
+              {l}
+            </button>
+          ))}
         </div>
-        {shown ? (
-          <div className={cx(!sel && "hidden lg:block")}>
-            <Thread key={shown} id={shown} back={() => setSel(null)} />
-          </div>
-        ) : (
-          <div className="hidden rounded-[18px] bg-paper lg:block" />
-        )}
       </div>
+      {tab === "comment" ? (
+        <Comments connected={connected} loading={!fbs.data && !fbs.error} />
+      ) : (
+        <div className="mx-auto grid max-w-[1320px] gap-4 px-4 pb-8 md:px-8 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className={cx("rounded-[18px] bg-paper shadow-[0_0_0_0.5px_var(--sp-sep)]", sel && "hidden lg:block")}>
+            {tab === "fb" && !connected && fbs.data && (
+              <div className="p-3">
+                <Notice tone="gray">Facebook Page холбогдоогүй — Тохиргоо → Facebook-аас холбоно. Доор AI-ийн хариулсан Messenger яриа л харагдана.</Notice>
+              </div>
+            )}
+            {fbt.error && (tab === "fb" || tab === "all") && (
+              <div className="p-3">
+                <Notice tone="danger">Messenger: {fbt.error}</Notice>
+              </div>
+            )}
+            {!list.length && <Empty icon="chat" title="Яриа алга" body="Харилцагч вэб чат, дуудлага эсвэл Messenger-ээр бичихэд энд харагдана." />}
+            <div className="max-h-[calc(100dvh-260px)] overflow-y-auto">
+              {list.map((i) => (i.kind === "fb" ? <FbRow key={i.key} t={i.t} conv={i.conv} active={shown === i.key} onClick={() => setSel(i.key)} /> : <AiRow key={i.key} c={i.conv} active={shown === i.key} onClick={() => setSel(i.key)} />))}
+            </div>
+          </div>
+          {item ? (
+            <div className={cx(!sel && "hidden lg:block")}>
+              {item.kind === "fb" ? (
+                <FbThreadView key={item.key} psid={item.t.psid} conv={item.conv} mode={mode} back={() => setSel(null)} onChange={() => void fbt.reload()} />
+              ) : (
+                <Thread key={item.key} id={item.conv.id} back={() => setSel(null)} />
+              )}
+            </div>
+          ) : (
+            <div className="hidden rounded-[18px] bg-paper lg:block" />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function AiRow({ c, active, onClick }: { c: Conv; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={cx("sp-row flex w-full gap-3 border-t border-[var(--sp-sep)] px-4 py-3 text-left", active && "bg-accent-soft")}>
+      <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--sp-fill)]">
+        <Icon name={CHANNEL[c.channel]?.icon ?? "chat"} size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[14.5px] font-semibold">{c.contact_name || c.title || (c.contact_phone ?? "Шинэ харилцагч")}</span>
+          <span className="ml-auto shrink-0 text-[12px] text-mute">{ago(c.last_at)}</span>
+        </div>
+        <div className="truncate text-[13px] text-mute">{c.last_text}</div>
+        <div className="mt-1 flex items-center gap-1.5 text-[11.5px]">
+          <span className="text-mute">{CHANNEL[c.channel]?.label}</span>
+          <span className={cx("rounded-full px-1.5 py-px font-semibold", c.status === "ai" ? "bg-ok-soft text-ok" : c.status === "human" ? "bg-warn-soft text-warn" : "bg-[var(--sp-fill)] text-mute")}>{STATUS[c.status].label}</span>
+        </div>
+      </div>
+    </button>
   );
 }
 

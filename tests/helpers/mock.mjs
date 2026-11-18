@@ -93,7 +93,7 @@ function defaultVision(body) {
 
 export async function startMock() {
   // vision: тест state.vision-ийг (мөр | (body) => мөр | { status }) солиж болно
-  const state = { chats: 0, embeds: 0, invoices: [], hosts: new Set(), graph: [], visionCalls: 0, vision: null };
+  const state = { chats: 0, embeds: 0, invoices: [], hosts: new Set(), graph: [], commentReplies: [], visionCalls: 0, vision: null };
   const srv = http.createServer(async (req, res) => {
     let raw = "";
     for await (const c of req) raw += c;
@@ -128,6 +128,20 @@ export async function startMock() {
         return json(200, { recipient_id: body.recipient?.id, message_id: `m_mock_${state.graph.length}` });
       }
       if (/\/conversations$/.test(p)) return json(200, { data: [] });
+      const tok = u.searchParams.get("access_token") || "";
+      // Page comment (fb-inbox.test): state.feed(pageId, token) → { data } | { error }; state.scopes[token] → debug_token
+      if (p === "/debug_token") return json(200, { data: { scopes: state.scopes?.[u.searchParams.get("input_token")] ?? [] } });
+      if (/^\/[^/]+\/feed$/.test(p) && req.method === "GET") {
+        const r = state.feed ? state.feed(p.split("/")[1], tok) : { data: [] };
+        return r.error ? json(400, { error: r.error }) : json(200, r);
+      }
+      if (/^\/[^/]+\/comments$/.test(p) && req.method === "POST") {
+        const target = decodeURIComponent(p.split("/")[1]);
+        state.commentReplies.push({ target, token: tok, body });
+        const err = state.replyError?.(target, tok);
+        if (err) return json(400, { error: err });
+        return json(200, { id: `${target.split("_")[0]}_reply${state.commentReplies.length}` });
+      }
       if (/\/subscribed_apps$/.test(p)) return json(200, { success: true });
       return json(200, { first_name: "Тест", last_name: "Хэрэглэгч" });
     }

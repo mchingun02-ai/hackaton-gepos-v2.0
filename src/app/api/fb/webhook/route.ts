@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { fbInbound } from "@/lib/agent/channels";
-import { cfg, handleEvent, validSignature } from "@/lib/fb/server";
+import { cfg, handleEvent, handleFeedChange, validSignature, type FeedChange } from "@/lib/fb/server";
 
 /** Meta webhook-ийн баталгаажуулалт (App → Webhooks → Callback URL, Verify token) */
 export async function GET(req: Request) {
@@ -16,14 +16,25 @@ export async function POST(req: Request) {
   const raw = Buffer.from(await req.arrayBuffer());
   if (raw.length > 2_000_000) return new Response("too large", { status: 413 });
   if (!validSignature(raw, req.headers.get("x-hub-signature-256"))) return new Response("bad signature", { status: 403 });
-  let data: { object?: string; entry?: { id: string; messaging?: Parameters<typeof handleEvent>[0][]; standby?: Parameters<typeof handleEvent>[0][] }[] };
+  let data: {
+    object?: string;
+    entry?: { id: string; messaging?: Parameters<typeof handleEvent>[0][]; standby?: Parameters<typeof handleEvent>[0][]; changes?: { field?: string; value?: FeedChange }[] }[];
+  };
   try {
     data = JSON.parse(raw.toString("utf8"));
   } catch {
     return new Response("bad json", { status: 400 });
   }
   if (data.object === "page")
-    for (const entry of data.entry ?? [])
+    for (const entry of data.entry ?? []) {
+      // feed — пост дээрх comment (зөвхөн хадгална; AI comment-д автоматаар хариулахгүй)
+      for (const ch of entry.changes ?? []) {
+        try {
+          if (ch.value) handleFeedChange(ch.field, ch.value, entry.id);
+        } catch (e) {
+          console.warn("[fb] feed", e);
+        }
+      }
       // standby — өөр апп мессеж хүлээн авагч үед ирэх (агуулга нь messaging-тэй ижил)
       for (const ev of [...(entry.messaging ?? []), ...(entry.standby ?? [])]) {
         try {
@@ -34,6 +45,7 @@ export async function POST(req: Request) {
           console.warn("[fb] event", e);
         }
       }
+    }
   // Meta 20 секундэд 200 авахгүй бол дахин илгээдэг
   return Response.json({ ok: true });
 }

@@ -24,7 +24,19 @@ type S = {
 type FbInfo = { judgeRef: string; allowAll: boolean };
 type AiInfo = { ready: boolean; host: string; model: string; fast: string; embed: string; omni: string; tts: string };
 type Key = { prefix: string; label: string; created_at: number; last_used: number | null };
-type Fb = { demo: boolean; page: { id: string; name: string; demo: boolean } | null };
+type Fb = {
+  demo: boolean;
+  page: { id: string; name: string; demo: boolean } | null;
+  scopes: { granted: string[] | null; required: string[]; missing: string[]; comments: string[]; commentsMissing: string[] | null } | null;
+};
+const SCOPE_LABEL: Record<string, string> = {
+  pages_show_list: "Page-ийн жагсаалт",
+  pages_messaging: "Messenger мессеж",
+  pages_manage_metadata: "Webhook захиалах",
+  pages_read_engagement: "Нэр, зураг унших",
+  pages_read_user_content: "Comment унших",
+  pages_manage_engagement: "Comment-д хариулах",
+};
 
 function Qr({ text }: { text: string }) {
   const svg = useMemo(() => {
@@ -275,6 +287,7 @@ function FbCard({ fb, s, save, info, requests }: { fb: Fb | null; s: S; save: (p
         ))}
       </div>
       {s.fbMode === "all" && <div className="text-[12.5px] font-semibold text-danger">AI бодит харилцагчдад хариулж байна.</div>}
+      {ready && <FbScopes fb={fb!} />}
       {s.fbMode === "testers" && (
         <div className="space-y-2">
           <div className="text-[12.5px] text-mute">AI зөвхөн доорх хүмүүст хариулна. Бусад бүх мессеж зөвхөн порталд харагдана.</div>
@@ -323,6 +336,47 @@ function FbCard({ fb, s, save, info, requests }: { fb: Fb | null; s: S; save: (p
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Олгосон эрх vs шаардлагатай; comment-ийн эрх дутуу бол «Facebook-ийг дахин холбох» (одоогийн /api/fb/connect урсгал) */
+function FbScopes({ fb }: { fb: Fb }) {
+  const sc = fb.scopes;
+  if (!sc) return null;
+  const granted = sc.granted;
+  const missingComments = sc.commentsMissing ?? [];
+  return (
+    <div className="space-y-2 rounded-[10px] bg-paper p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[13px] font-semibold">Facebook-ийн эрх</div>
+        {granted === null && <span className="text-[12px] text-mute">Facebook-аас шалгаж чадсангүй</span>}
+      </div>
+      <div className="grid gap-1">
+        {sc.required.map((x) => {
+          const ok = granted ? granted.includes(x) : null;
+          return (
+            <div key={x} className="flex items-center gap-1.5 text-[12.5px]" title={x}>
+              <span className={cx("grid size-4 shrink-0 place-items-center rounded-full", ok === null ? "bg-[var(--sp-fill)]" : ok ? "bg-ok text-white" : "bg-danger text-white")}>
+                {ok !== null && <Icon name={ok ? "check" : "close"} size={10} />}
+              </span>
+              <span className="truncate">{SCOPE_LABEL[x] ?? x}</span>
+              <span className="truncate font-mono text-[10.5px] text-mute">{x}</span>
+            </div>
+          );
+        })}
+      </div>
+      {missingComments.length > 0 && (
+        <div className="space-y-2 rounded-[10px] bg-warn-soft p-2.5 text-[12.5px] text-warn">
+          <div>
+            Comment унших/хариулах эрх алга ({missingComments.join(", ")}). Page-ийн админ хаягаар дахин холбож эрхийг зөвшөөрнө үү. Messenger үргэлжлэн ажиллана.
+          </div>
+          <a href="/api/fb/connect" className="inline-flex h-8 items-center gap-1.5 rounded-full bg-paper px-3 text-[13px] font-semibold text-accent">
+            <Icon name="link" size={14} />
+            Facebook-ийг дахин холбох
+          </a>
         </div>
       )}
     </div>

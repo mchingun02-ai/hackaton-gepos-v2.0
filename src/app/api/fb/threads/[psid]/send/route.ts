@@ -8,7 +8,7 @@ export const POST = handle(async (req: Request, rc: RouteContext<"/api/fb/thread
   const ctx = requireTenant(req, "dashboard");
   const p = pageOr409(ctx.tenantId);
   const b = (await req.json().catch(() => ({}))) as { text?: string; staff?: string };
-  const out = await sendText(p, psid, String(b.text || ""), String(b.staff || "").slice(0, 80) || "Мерчант", "human");
+  const out = await sendText(p, psid, String(b.text || ""), (String(b.staff || "") || (ctx.principal.kind === "session" ? ctx.principal.name : "") || "Мерчант").slice(0, 80), "human");
   // Ажилтан гараар хариулсан — AI энэ яриаг орхино («AI-д буцаах» хүртэл) §9.2
   const conv = findConversation(ctx, "fb", psid);
   if (conv?.status === "ai") setConvStatus(ctx, conv.id, "human");
