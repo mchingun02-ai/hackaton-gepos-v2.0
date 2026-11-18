@@ -1,5 +1,6 @@
 import { api, bad } from "@/lib/agent/api";
 import { getSettings } from "@/lib/agent/settings";
+import { ttsProvider } from "@/lib/agent/qwen";
 import { currentTenant, legacyMerchantParam, widgetContext } from "@/lib/tenant/auth";
 import { tenantBrand } from "@/lib/tenant/brand";
 
@@ -12,5 +13,5 @@ export const GET = api(async (req: Request) => {
   const info = await ctx.pos.storeInfo();
   const st = getSettings(ctx);
   const brand = tenantBrand(ctx.tenantId);
-  return Response.json({ store: st.businessName || info.name, desc: info.description ?? "", color: brand?.color || info.color || "", brand, agent: st.agentName, greeting: st.greeting, hours: st.hours, channels: st.channels });
+  return Response.json({ store: st.businessName || info.name, desc: info.description ?? "", color: brand?.color || info.color || "", brand, agent: st.agentName, greeting: st.greeting, hours: st.hours, channels: st.channels, tts: ttsProvider() });
 });

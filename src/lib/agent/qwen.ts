@@ -153,7 +153,20 @@ export async function embed(ctx: Cx, texts: string[]): Promise<Float32Array[]> {
  * Дууг текст болгоно (omni загвар, стрим заавал). wav base64 өгнө.
  * Монгол яриаг кирилл бичгээр буулгана.
  */
+const MONGOL_SCRIPT = /[\u1800-\u18AF]/;
+const ASR_PROMPT =
+  "You are a speech-to-text engine. Output ONLY the exact words spoken in the audio, in the spoken language. Mongolian MUST be written in modern Mongolian CYRILLIC (А Б В … Ө Ү). NEVER use traditional Mongolian script (ᠮᠣᠩᠭᠣᠯ). No translation, no comments. If there is no speech, output nothing.";
+const ASR_STRICT = "Транскрипц хий. Монгол яриаг ЗӨВХӨН КИРИЛЛ үсгээр бич (жишээ: «Сайн байна уу»). Монгол бичиг (ᠮᠣᠩᠭᠣᠯ) ХЭЗЭЭ Ч бүү хэрэглэ. Зөвхөн хэлсэн үгийг бич.";
+
 export async function transcribe(ctx: Cx, wavBase64: string): Promise<string> {
+  // Qwen Omni заримдаа монгол бичгээр буулгадаг — тэгвэл хатуу зааварчилгаатай 1 удаа дахин оролдоно
+  const first = await transcribeOnce(ctx, wavBase64, ASR_PROMPT, "");
+  if (!MONGOL_SCRIPT.test(first)) return first;
+  const second = await transcribeOnce(ctx, wavBase64, ASR_STRICT, "Кирилл үсгээр бич.");
+  return MONGOL_SCRIPT.test(second) ? "" : second;
+}
+
+async function transcribeOnce(ctx: Cx, wavBase64: string, system: string, hint: string): Promise<string> {
   const c = qcfg();
   if (!c.key) throw new AiError("Model Studio (DASHSCOPE_API_KEY) тохируулаагүй байна", 503);
   const r = await fetch(`${c.url}/chat/completions`, {
@@ -168,10 +181,15 @@ export async function transcribe(ctx: Cx, wavBase64: string): Promise<string> {
       messages: [
         {
           role: "system",
-          content:
-            "You are a speech-to-text engine. Output ONLY the exact words spoken in the audio, in the spoken language. Mongolian must be written in Mongolian Cyrillic. No translation, no comments. If there is no speech, output nothing.",
+          content: system,
         },
-        { role: "user", content: [{ type: "input_audio", input_audio: { data: `data:audio/wav;base64,${wavBase64}`, format: "wav" } }] },
+        {
+          role: "user",
+          content: [
+            { type: "input_audio", input_audio: { data: `data:audio/wav;base64,${wavBase64}`, format: "wav" } },
+            ...(hint ? [{ type: "text", text: hint }] : []),
+          ],
+        },
       ],
     }),
   });
@@ -215,6 +233,9 @@ export async function transcribe(ctx: Cx, wavBase64: string): Promise<string> {
  */
 export async function speak(ctx: TenantContext, text: string): Promise<{ url: string } | null> {
   const c = qcfg();
+  // ⚠ Хакатоны дүрэм: шүүлтийн өдөр бүх inference зөвхөн Qwen. AI_TTS_PROVIDER=gemini нь gateway-д Qwen TTS
+  // нээгдэх хүртэлх түр шийдэл — асаалттай үед дуудлагын дэлгэц «Дуу: Gemini» гэж ил харуулна.
+  if (ttsProvider() === "gemini") return geminiSpeak(ctx, text);
   if (c.tts === "none") return null;
   if (c.tts === "omni") return omniSpeak(ctx, text);
   const base = process.env.AI_BASE_URL ? new URL(process.env.AI_BASE_URL).origin : c.host;
@@ -313,5 +334,42 @@ async function omniSpeak(ctx: TenantContext, text: string): Promise<{ url: strin
   if (!chunks.length) return null;
   const fid = newId("au");
   writeFileSync(audioFile(ctx, fid), wav(Buffer.concat(chunks)));
+  return { url: `/api/agent/public/audio/${fid}` };
+}
+
+/* ───────── Gemini TTS (түр, AI_TTS_PROVIDER=gemini) ───────── */
+
+/** Дуугаар хариулах эх сурвалж: "gemini" | "qwen" (анхдагч) */
+export const ttsProvider = (): "gemini" | "qwen" => (process.env.AI_TTS_PROVIDER === "gemini" && !!process.env.GEMINI_API_KEY ? "gemini" : "qwen");
+
+/**
+ * Google Gemini TTS (generateContent, responseModalities AUDIO) → 24kHz 16-bit PCM → WAV.
+ *   GEMINI_API_KEY, GEMINI_TTS_MODEL (анхдагч gemini-3.8-flash-tts), GEMINI_TTS_VOICE (анхдагч Kore)
+ * Шалгасан (2026-11-18): монгол дуудлагыг Qwen Omni буцааж бараг үгчлэн таньсан.
+ */
+async function geminiSpeak(ctx: TenantContext, text: string): Promise<{ url: string } | null> {
+  const model = process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts";
+  const voice = process.env.GEMINI_TTS_VOICE || "Kore";
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": process.env.GEMINI_API_KEY || "", "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: text.slice(0, 600) }] }],
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
+    }),
+  });
+  const body = await r.text();
+  if (!r.ok) throw new AiError(`Gemini TTS ${r.status}: ${body.slice(0, 200)}`);
+  const j = JSON.parse(body) as { candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+  const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+  if (!part?.inlineData?.data) return null;
+  track(ctx, "tts", model, { input_tokens: j.usageMetadata?.promptTokenCount, output_tokens: j.usageMetadata?.candidatesTokenCount });
+  const raw = Buffer.from(part.inlineData.data, "base64");
+  const mime = part.inlineData.mimeType ?? "";
+  // шинэ загварууд бэлэн WAV буцаадаг; хуучин нь толгойгүй 16-bit PCM (audio/L16;rate=24000)
+  const out = /wav/i.test(mime) || raw.subarray(0, 4).toString() === "RIFF" ? raw : wav(raw, Number(/rate=(\d+)/.exec(mime)?.[1]) || 24_000);
+  const fid = newId("au");
+  writeFileSync(audioFile(ctx, fid), out);
   return { url: `/api/agent/public/audio/${fid}` };
 }

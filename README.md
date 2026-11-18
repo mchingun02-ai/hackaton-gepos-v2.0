@@ -19,11 +19,11 @@
 
 | Юу | Холбоос |
 |---|---|
-| Захирлын самбар | **https://earthquake-regard-becoming-compilation.trycloudflare.com/ai** — нэвтрэх: РД `6543210` → PIN `1234` |
-| Харилцагчийн вэб чат | https://earthquake-regard-becoming-compilation.trycloudflare.com/ai/chat?w=gwt_eyJ0IjoieHh1NGw4MTJhemQ4Iiwia2lkIjoiN3Z3eHVtMHUiLCJjaCI6WyJ3ZWIiLCJ2b2ljZSJdfQ.KQ-c_Ruq7lVvSi0Xh4oqE3R9fpZjgy1qQpKyCPbWzE4 |
-| AI дуудлагын төв | https://earthquake-regard-becoming-compilation.trycloudflare.com/ai/call?w=gwt_eyJ0IjoieHh1NGw4MTJhemQ4Iiwia2lkIjoiN3Z3eHVtMHUiLCJjaCI6WyJ3ZWIiLCJ2b2ljZSJdfQ.KQ-c_Ruq7lVvSi0Xh4oqE3R9fpZjgy1qQpKyCPbWzE4 |
-| Тооллогын утасны апп | https://earthquake-regard-becoming-compilation.trycloudflare.com/count — РД `6543210` → PIN `1234` (эсвэл самбарын «Тооллого → Утас холбох» QR) |
-| ПОС · Merchant portal | https://earthquake-regard-becoming-compilation.trycloudflare.com/ · https://earthquake-regard-becoming-compilation.trycloudflare.com/portal |
+| Захирлын самбар | **https://castle-productions-discussion-commission.trycloudflare.com/ai** — нэвтрэх: РД `6543210` → PIN `1234` |
+| Харилцагчийн вэб чат | https://castle-productions-discussion-commission.trycloudflare.com/ai/chat?w=gwt_eyJ0IjoieHh1NGw4MTJhemQ4Iiwia2lkIjoiN3Z3eHVtMHUiLCJjaCI6WyJ3ZWIiLCJ2b2ljZSJdfQ.KQ-c_Ruq7lVvSi0Xh4oqE3R9fpZjgy1qQpKyCPbWzE4 |
+| AI дуудлагын төв | https://castle-productions-discussion-commission.trycloudflare.com/ai/call?w=gwt_eyJ0IjoieHh1NGw4MTJhemQ4Iiwia2lkIjoiN3Z3eHVtMHUiLCJjaCI6WyJ3ZWIiLCJ2b2ljZSJdfQ.KQ-c_Ruq7lVvSi0Xh4oqE3R9fpZjgy1qQpKyCPbWzE4 |
+| Тооллогын утасны апп | https://castle-productions-discussion-commission.trycloudflare.com/count — РД `6543210` → PIN `1234` (эсвэл самбарын «Тооллого → Утас холбох» QR) |
+| ПОС · Merchant portal | https://castle-productions-discussion-commission.trycloudflare.com/ · https://castle-productions-discussion-commission.trycloudflare.com/portal |
 
 > Демо сервер одоогоор түр HTTPS холбоосоор ажиллаж байна. Байнгын домэйнд шилжмэгц энэ хүснэгтийг шинэчилнэ. Бүх өгөгдөл зохиомол: «Мөнх-Од мини маркет» демо мерчант, «Dayansoft-demo» түнш.
 
@@ -85,9 +85,11 @@
 | `qwen-flash` | Туслах чиглүүлэх, харилцагчийн карт, FAQ олборлолт |
 | `text-embedding-v4` | Мэдлэгийн сангийн вектор хайлт |
 | `qwen3.5-omni-flash` | Дуудлага: яриаг текст болгох |
-| `qwen-audio-3.1-tts-flash` (монгол хоолой «Аялгуу») | Дуугаар хариулах. Gateway endpoint нээгдмэгц идэвхжинэ |
+| `qwen-audio-3.1-tts-flash` (монгол хоолой «Аялгуу») | Дуугаар хариулах — gateway endpoint нээгдмэгц идэвхжинэ |
 
-Бүх дуудлага `src/lib/agent/qwen.ts`-аар OpenAI-тэй нийцтэй gateway (TokenHub) → Model Studio руу явна. Өөр AI нийлүүлэгч ашиглаагүй (хуучин Gemini туслахыг унтраасан).
+Бүх дуудлага `src/lib/agent/qwen.ts`-аар OpenAI-тэй нийцтэй gateway (TokenHub) → Model Studio руу явна.
+
+> **Ил тод мэдэгдэл:** Qwen-ий монгол TTS-ийг gateway-ээр дамжуулах endpoint хараахан нээгдээгүй тул **дуудлагын дуут хариуг түр хугацаанд Google Gemini TTS** (`gemini-3.8-flash-tts`) гаргаж байна. Сонсох (Qwen Omni), ойлгох, хариулт бодох (qwen3.6-plus) хэсэг бүхэлдээ Qwen. Дуудлагын дэлгэц дээр «Дуу: Gemini» гэж харагдана. `AI_TTS_PROVIDER` тохиргоог устгахад дуут хариу Qwen рүү (эсвэл текст рүү) буцна.
 
 ### Model Studio-ийн зарцуулалт
 - Апп доторх бүртгэл: **Багц, төлбөр → Техникийн дэлгэрэнгүй (Qwen токен)** ![](docs/screenshots/09-qwen-usage.png)
@@ -107,7 +109,7 @@
 
 | Шаардлага | Хэрэгжилт |
 |---|---|
-| Realtime inference зөвхөн Qwen (Model Studio) | `src/lib/agent/qwen.ts`, дээрх хүснэгт. Gemini туслах `/api/ai/*` → 404 |
+| Realtime inference зөвхөн Qwen (Model Studio) | `src/lib/agent/qwen.ts`. Хуучин Gemini туслах `/api/ai/*` → 404. **Үл хамаарах:** дуудлагын дуут хариу түр Gemini TTS (дээрх мэдэгдлийг үз), `AI_TTS_PROVIDER`-ээр унтарна |
 | Бүх төлбөр урьдчилсан, QPay | `billing.ts`: зөвхөн **sandbox** (production URL-ийг код хориглоно). Кредит 0 бол AI зогсоно |
 | Өрсөлдөхүйц үнэ, 2–3 үйлчилгээтэй харьцуулалт | Багц, төлбөр хуудас, [слайд](docs/submission/GePOS-v2-AI-slide.pdf) |
 | Бодит харилцагчийн өгөгдөл ашиглахгүй | Зөвхөн seed болон зохиомол өгөгдөл. Facebook AI анхдагчаар унтарсан, «бүгдэд хариулах» горимыг сервер хориглоно |

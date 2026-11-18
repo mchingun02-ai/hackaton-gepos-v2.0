@@ -11,7 +11,7 @@ import { cx } from "@/components/sp/ui";
 import { listen, type Recorder } from "./client";
 import { visitorToken } from "./CustomerChat";
 
-type Info = { store: string; agent: string; greeting: string; color: string; channels: { voice: boolean } };
+type Info = { tts?: "gemini" | "qwen"; store: string; agent: string; greeting: string; color: string; channels: { voice: boolean } };
 type Line = { who: "me" | "ai" | "sys"; text: string; steps?: { title: string; summary: string; ok: boolean }[] };
 
 export function Call() {
@@ -178,7 +178,7 @@ export function Call() {
             <Icon name="phone" size={34} className="rotate-[135deg]" />
           </button>
         )}
-        <div className="mt-3 text-[12px] opacity-50">{info && !info.channels.voice ? "Дуудлага одоогоор хаалттай" : voiceOut ? "Qwen Omni · Alibaba Cloud" : "Qwen Omni сонсоно · хариу дэлгэц дээр текстээр"}</div>
+        <div className="mt-3 text-[12px] opacity-50">{info && !info.channels.voice ? "Дуудлага одоогоор хаалттай" : voiceOut ? (info?.tts === "gemini" ? "Сонсох: Qwen Omni · Дуу: Gemini" : "Qwen Omni · Alibaba Cloud") : "Qwen Omni сонсоно · хариу дэлгэц дээр текстээр"}</div>
       </div>
     </div>
   );
