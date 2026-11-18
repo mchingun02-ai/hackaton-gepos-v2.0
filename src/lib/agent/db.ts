@@ -211,6 +211,9 @@ function migrate(d: DatabaseSync) {
   addCol(d, "kb_docs", "auto_key", "TEXT");
   addCol(d, "kb_docs", "content_hash", "TEXT");
   addCol(d, "kb_docs", "provenance", "TEXT");
+  // тооллого: зургийн байршил (Тавиур 1, Агуулах …) ба ойролцоо зураг илрүүлэх dHash
+  addCol(d, "inv_photos", "place", "TEXT");
+  addCol(d, "inv_photos", "phash", "TEXT");
   addCol(d, "kb_docs", "refreshed_at", "INTEGER");
   addCol(d, "kb_docs", "valid_until", "INTEGER");
   addCol(d, "kb_docs", "audience", "TEXT NOT NULL DEFAULT 'customer'");

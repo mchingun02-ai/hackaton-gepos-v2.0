@@ -7,25 +7,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CameraScanner } from "@/components/CameraScanner";
 import { Icon } from "@/components/sp/icons";
-import { Btn, cx, Sheet, toast, useConfirm } from "@/components/sp/ui";
+import { Alert, Btn, cx, Sheet, toast, useConfirm } from "@/components/sp/ui";
 import { computeQty, METHOD_LABEL, type Inputs, type Method } from "@/lib/inventory/methods";
 import { ApiError, call, sendCount, uuid } from "./api";
 import type { Nav } from "./CountApp";
-import { prepareShot } from "./image";
+import { shootShelf } from "./shoot";
 import type { Line, Me, SessionFull } from "./types";
 import { BottomBar, CamIcon, CameraInput, ErrorNote, fmt, InfoNote, LevelChip, LineChip, NumField, TopBar } from "./ui";
 
 export const OPEN_KEY = "gp-count-open";
+const PLACE_KEY = "gp-count-place";
 type Filter = "todo" | "done" | "all";
 const isDone = (l: Line) => l.status === "counted" || l.status === "recounted" || l.status === "skipped";
 
-export function Counting({ sid, me, nav, pending, openProduct }: { sid: string; me: Me; nav: Nav; pending: number; openProduct?: string }) {
+export function Counting({ sid, me, nav, pending, openProduct, scanOnOpen }: { sid: string; me: Me; nav: Nav; pending: number; openProduct?: string; scanOnOpen?: boolean }) {
   const [data, setData] = useState<SessionFull | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("todo");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Line | null>(null);
-  const [scan, setScan] = useState(false);
+  // амьд баркод уншигч зөвхөн ажилтан «Баркодоор нэг бараа нэмэх»-ийг тодорхой дарсан үед
+  const [scan, setScan] = useState(!!scanOnOpen);
   const [miss, setMiss] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const search = useRef<HTMLInputElement>(null);
@@ -68,11 +70,7 @@ export function Counting({ sid, me, nav, pending, openProduct }: { sid: string; 
     if (data?.session.status !== "counting") return;
     setUploading(true);
     try {
-      const shot = await prepareShot(f);
-      const fd = new FormData();
-      fd.append("image", shot.blob, "shelf.jpg");
-      const r = await call<import("./types").PhotoResp>(`/api/v1/inventory/sessions/${encodeURIComponent(sid)}/photos`, { method: "POST", body: fd });
-      nav.go({ k: "photo", sid, shot: { url: shot.url, w: shot.w, h: shot.h, resp: r } });
+      nav.go({ k: "photo", sid, shot: await shootShelf(sid, f, { place: data.nextPlace }) });
     } catch (e) {
       toast(e instanceof ApiError && e.status === 402 ? "AI кредит дууссан. Баркод эсвэл гараар тоолно уу." : e instanceof Error ? e.message : "Зураг илгээж чадсангүй", "danger");
     } finally {
@@ -150,6 +148,11 @@ export function Counting({ sid, me, nav, pending, openProduct }: { sid: string; 
           )}
         </label>
 
+        {!closed && (
+          <button type="button" onClick={() => setScan(true)} className="sp-tap -mt-1 flex h-[40px] items-center gap-1.5 px-1 text-[14px] font-semibold text-accent">
+            <Icon name="scan" size={16} /> Баркодоор нэг бараа нэмэх
+          </button>
+        )}
         {!q && (
           <div className="grid grid-cols-3 gap-2" role="tablist">
             {(
@@ -203,7 +206,7 @@ export function Counting({ sid, me, nav, pending, openProduct }: { sid: string; 
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[16px] font-semibold text-ink">{l.name}</div>
                     <div className="truncate text-[13px] text-mute tnum">
-                      {l.counted != null ? `${fmt(l.counted)} ${l.unitLabel} тоолсон` : (l.barcode ?? "баркодгүй")}
+                      {l.counted != null ? (l.byPlace?.length ? l.byPlace.map((x) => `${x.place}: ${fmt(x.qty)}`).join(" · ") : `${fmt(l.counted)} ${l.unitLabel} тоолсон`) : (l.barcode ?? "баркодгүй")}
                       {data.reveal && l.system != null && l.counted != null ? ` · систем ${fmt(l.system)}` : data.reveal && l.expected != null && l.counted == null ? ` · систем ${fmt(l.expected)}` : ""}
                     </div>
                   </div>
@@ -217,23 +220,20 @@ export function Counting({ sid, me, nav, pending, openProduct }: { sid: string; 
 
       {!closed && (
         <BottomBar>
-          <div className="grid grid-cols-3 gap-2">
-            <label htmlFor="shelf-cam" className={cx("sp-tap flex h-[64px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[16px] bg-accent text-white", uploading && "pointer-events-none opacity-60")}>
+          {/* Зургаар (бөөнөөр) тоолох нь үндсэн; баркод — зөвхөн зурагт илрээгүй бараанд (дээрх жижиг холбоос) */}
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <label htmlFor="shelf-cam" className={cx("sp-tap flex h-[64px] cursor-pointer items-center justify-center gap-2 rounded-[16px] bg-accent text-[17px] font-semibold text-white", uploading && "pointer-events-none opacity-60")}>
               <CamIcon size={24} />
-              <span className="text-[14px] font-semibold">Зураг</span>
+              Тавиурын зураг
             </label>
             <CameraInput id="shelf-cam" onFile={(f) => void onPhoto(f)} />
-            <button type="button" onClick={() => setScan(true)} className="sp-tap flex h-[64px] flex-col items-center justify-center gap-0.5 rounded-[16px] bg-accent-soft text-accent">
-              <Icon name="scan" size={24} />
-              <span className="text-[14px] font-semibold">Баркод</span>
-            </button>
             <button
               type="button"
               onClick={() => {
                 window.scrollTo({ top: 0, behavior: "smooth" });
                 search.current?.focus();
               }}
-              className="sp-tap flex h-[64px] flex-col items-center justify-center gap-0.5 rounded-[16px] bg-accent-soft text-accent"
+              className="sp-tap flex h-[64px] flex-col items-center justify-center gap-0.5 rounded-[16px] bg-accent-soft px-5 text-accent"
             >
               <Icon name="search" size={24} />
               <span className="text-[14px] font-semibold">Хайх</span>
@@ -301,7 +301,9 @@ function CountSheet({ sid, line, data, onClose, onSaved }: { sid: string; line: 
   const p = line.profile;
   const [method, setMethod] = useState<Method>(p.method ?? "facings");
   const [v, setV] = useState<Vals>({ f: "", d: s(p.depth, "1"), r: "1", l: "", b: "", pack: s(p.packSize), g: "", uw: s(p.unitWeightG), tare: s(p.tareG, "0"), h: "", t: s(p.unitThicknessMm), s: "1", q: "" });
-  const [place, setPlace] = useState<"Тавиур" | "Агуулах" | "">("");
+  const places = [...new Set([...data.places, "Агуулах"])];
+  const [place, setPlace] = useState<string>(() => (typeof window !== "undefined" && sessionStorage.getItem(PLACE_KEY)) || data.places[data.places.length - 1] || "Агуулах");
+  const [ask, setAsk] = useState<{ place: string; qty: number; photo: boolean; retry: (mode: "add" | "replace") => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { confirm, node } = useConfirm();
@@ -328,7 +330,7 @@ function CountSheet({ sid, line, data, onClose, onSaved }: { sid: string; line: 
     previewErr = e instanceof Error ? e.message : null;
   }
 
-  async function save(override?: { inputs: Inputs; method: Method }, large = false, clientId = uuid()) {
+  async function save(override?: { inputs: Inputs; method: Method }, large = false, clientId = uuid(), mode?: "add" | "replace") {
     setBusy(true);
     setErr(null);
     const m = override?.method ?? method;
@@ -339,13 +341,20 @@ function CountSheet({ sid, line, data, onClose, onSaved }: { sid: string; line: 
       inputs: override?.inputs ?? inputs,
       source: "manual",
       place: place || undefined,
+      ...(mode ? { mode } : {}),
       profile: m === "boxes" ? { packSize: profile.packSize } : m === "weight" ? { unitWeightG: profile.unitWeightG, tareG: profile.tareG } : m === "stack" ? { unitThicknessMm: profile.unitThicknessMm } : undefined,
       ...(large ? { confirmLarge: true } : {}),
     };
     try {
       const r = await sendCount(sid, body, line.name);
+      if (place) sessionStorage.setItem(PLACE_KEY, place);
+      if (!r.queued && r.data.conflict) {
+        const c = r.data.conflict;
+        setAsk({ ...c, retry: (md) => void save(override, large, uuid(), md) });
+        return;
+      }
       if (r.queued) toast("Интернэтгүй — тоо хадгалагдсан, дараа илгээнэ", "ink");
-      else toast(`${line.name}: ${fmt(r.data.count.qty)} ${line.unitLabel}${r.data.count.warning ? ` · ${r.data.count.warning}` : ""}`, r.data.count.warning ? "danger" : "ok");
+      else if (r.data.count) toast(`${line.name}: ${fmt(r.data.count.qty)} ${line.unitLabel}${r.data.count.warning ? ` · ${r.data.count.warning}` : ""}`, r.data.count.warning ? "danger" : "ok");
       onSaved();
     } catch (e) {
       if (e instanceof ApiError && e.code === "confirm_large")
@@ -445,8 +454,8 @@ function CountSheet({ sid, line, data, onClose, onSaved }: { sid: string; line: 
         {preview?.warning && <InfoNote tone="warn">{preview.warning}</InfoNote>}
 
         <div className="flex flex-wrap gap-2">
-          {(["Тавиур", "Агуулах"] as const).map((x) => (
-            <button key={x} type="button" onClick={() => setPlace(place === x ? "" : x)} className={cx("sp-tap h-[44px] rounded-full px-4 text-[14.5px] font-semibold", place === x ? "bg-ink text-paper" : "bg-paper text-ink shadow-[0_0_0_0.5px_var(--sp-sep)]")}>
+          {places.map((x) => (
+            <button key={x} type="button" onClick={() => setPlace(x)} className={cx("sp-tap h-[44px] rounded-full px-4 text-[14.5px] font-semibold", place === x ? "bg-ink text-paper" : "bg-paper text-ink shadow-[0_0_0_0.5px_var(--sp-sep)]")}>
               {x}
             </button>
           ))}
@@ -481,6 +490,17 @@ function CountSheet({ sid, line, data, onClose, onSaved }: { sid: string; line: 
         {err && <ErrorNote>{err}</ErrorNote>}
       </div>
       {node}
+      <Alert
+        open={!!ask}
+        title={ask ? `${ask.place}-д ${fmt(ask.qty)} ${line.unitLabel} тоологдсон` : ""}
+        message={ask?.photo ? "Зургаар тоолсон тоо байна. Энэ тоог нэмэх үү, эсвэл солих уу?" : "Энэ байршилд өмнө тоолсон. Нэмэх үү, солих уу?"}
+        onClose={() => setAsk(null)}
+        actions={[
+          { label: "Нэмэх", style: "default", onClick: () => (ask?.retry("add"), setAsk(null)) },
+          { label: "Солих", style: "primary", onClick: () => (ask?.retry("replace"), setAsk(null)) },
+          { label: "Болих", style: "cancel", onClick: () => setAsk(null) },
+        ]}
+      />
     </Sheet>
   );
 }

@@ -74,7 +74,7 @@ function writeQ(q: QueuedCount[]) {
 }
 export const queued = () => (typeof window === "undefined" ? [] : readQ());
 
-export type CountResp = { duplicate: boolean; count: { id: string; qty: number; warning?: string | null }; line: unknown };
+export type CountResp = { duplicate: boolean; count: { id: string; qty: number; warning?: string | null } | null; conflict?: { place: string; qty: number; photo: boolean }; line: unknown };
 
 /**
  * Тоо илгээх. Сүлжээ/сервер (5xx) алдаанд дараалалд хийж { queued: true } буцаана.
@@ -105,7 +105,9 @@ export async function flushQueue(): Promise<{ sent: number; failed: string[] }> 
   try {
     for (const item of readQ()) {
       try {
-        await call(`/api/v1/inventory/sessions/${encodeURIComponent(item.sid)}/counts`, { method: "POST", json: item.body, headers: { "Idempotency-Key": item.body.clientId } });
+        const r = await call<CountResp>(`/api/v1/inventory/sessions/${encodeURIComponent(item.sid)}/counts`, { method: "POST", json: item.body, headers: { "Idempotency-Key": item.body.clientId } });
+        // офлайнаар тоолсон үед тухайн байршилд тоо байсан бол асуух боломжгүй — нэмнэ (хасагдахгүй)
+        if (r.conflict) await call(`/api/v1/inventory/sessions/${encodeURIComponent(item.sid)}/counts`, { method: "POST", json: { ...item.body, mode: "add" }, headers: { "Idempotency-Key": item.body.clientId } });
         writeQ(readQ().filter((x) => x.body.clientId !== item.body.clientId));
         sent++;
       } catch (e) {

@@ -82,10 +82,12 @@ function defaultVision(body) {
   let cands = [];
   const m = /<data>([\s\S]*?)<\/data>/.exec(text);
   if (m) try { cands = JSON.parse(m[1]); } catch {}
-  const k = (re) => cands.find((c) => re.test(c.name))?.k ?? null;
+  const k = (re) => cands.find((c) => re.test(c.n ?? c.name))?.k ?? null;
   const items = [
-    { k: k(/Кока-Кола/), label: "Coca-Cola 0.5L", facings: 6, stacked_rows: 1, confidence: 0.92, bbox: [0.05, 0.1, 0.4, 0.5] },
-    { k: k(/Ундраа/), label: "Ундраа ус 0.5", facings: 4, stacked_rows: 2, confidence: 0.81, bbox: [0.5, 0.1, 0.4, 0.5] },
+    { k: k(/Кока-Кола 0\.5/), label: "Coca-Cola 0.5L", facings: 6, stacked_rows: 1, depth_est: 4, depth_conf: 0.9, confidence: 0.92, bbox: [0.02, 0.1, 0.4, 0.5] },
+    { k: k(/Ундраа/), label: "Ундраа ус 0.5", facings: 4, stacked_rows: 2, depth_est: 3, depth_conf: 0.5, confidence: 0.81, bbox: [0.5, 0.1, 0.4, 0.5] },
+    // k-гүй, англи нэртэй — үнийн шошго (3900) ба нэрээр «Сүү»-тэй тааруулна
+    { k: null, label: "Сүү 1 л", price_tag: 3900, facings: 3, confidence: 0.9, bbox: [0.05, 0.62, 0.2, 0.3] },
     { k: "zz9", label: "Үл мэдэгдэх бараа", facings: 9999, confidence: 0.4, bbox: [0.1, 0.7, 0.2, 0.2] },
   ];
   return "Энд үр дүн:\n```json\n" + JSON.stringify({ items, gaps: [{ near_label: "Жүүс", price_tag_text: "4800₮", bbox: [0.6, 0.7, 0.1, 0.1] }], quality: { blurry: false, too_dark: false, partial_shelf: false } }) + "\n```";

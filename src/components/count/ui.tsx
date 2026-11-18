@@ -148,18 +148,24 @@ export function InfoNote({ children, tone = "accent" }: { children: ReactNode; t
 }
 
 /** Камерын оролт — утасны жинхэнэ камер (бүтэн нягтрал) */
-export function CameraInput({ onFile, id }: { onFile: (f: File) => void; id: string }) {
+/**
+ * Утасны жинхэнэ камер (бүтэн нягтрал) — ЗУРАГ авна; амьд баркод уншигч (ZXing) огт асаахгүй.
+ * `gallery` — capture-гүй, олон зураг сонгох (бүтэн эгнээг нэг дор): файл бүр өөрийн «Тавиур N».
+ */
+export function CameraInput({ onFile, onFiles, id, gallery }: { onFile?: (f: File) => void; onFiles?: (f: File[]) => void; id: string; gallery?: boolean }) {
   return (
     <input
       id={id}
       type="file"
       accept="image/*"
-      capture="environment"
+      {...(gallery ? { multiple: true } : { capture: "environment" as const })}
       className="sr-only"
       onChange={(e) => {
-        const f = e.target.files?.[0];
+        const fs = Array.from(e.target.files ?? []).slice(0, 20);
         e.target.value = "";
-        if (f) onFile(f);
+        if (!fs.length) return;
+        if (onFiles) onFiles(fs);
+        else onFile?.(fs[0]);
       }}
     />
   );

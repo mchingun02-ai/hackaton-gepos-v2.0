@@ -5,7 +5,7 @@ const { src } = await import(`${ROOT}/tests/helpers/ts.mjs`);
 const P = await src("lib/inventory/prompts");
 const M = await src("lib/inventory/match");
 const core = await src("lib/sp/core");
-const products = core.freshState().products.map((p) => ({ id: p.id, name: p.name, barcodes: p.barcode ? [p.barcode] : [], category: p.categoryId }));
+const products = core.freshState().products.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, barcodes: p.barcode ? [p.barcode] : [], price: p.price, category: p.categoryId }));
 const { cands, alias } = M.aliasList(products);
 const MAP = { "cola-500ml": "Кока-Кола 0.5 л", "water-500ml": "Ус «Ундраа» 0.5 л", "juice-1l": "Жүүс 1 л", "milk-1l": "Сүү 1 л «Сүү ХК»", chocolate: "Шоколад «Алтан тариа»", cookies: "Жигнэмэг", "oil-1l": "Ургамлын тос 1 л", "flour-2kg": "Гурил 2 кг", "tea-100g": "Цай 100 г", coffee: "Кофе 3-in-1, 20 ш", bread: "Талх «Атар»", "eggs-10": "Өндөг 10 ш", "yogurt-500g": "Тараг 500 г" };
 const truth = JSON.parse(readFileSync("/tmp/aiemp/vision/truth.json", "utf8"));
@@ -25,7 +25,7 @@ for (const k of ["A", "B", "C"]) {
   const rec = { status: r.status, ms: r.ms, usage: r.usage, error: r.error, raw: r.content };
   try {
     const parsed = P.parseShelf(r.content ?? "", new Set(alias.keys()));
-    const det = parsed.items.map((it) => ({ ...it, match: M.matchOne(it, products, alias) }));
+    const det = parsed.items.map((it) => ({ ...it, match: M.resolveDetection(it, products, alias) }));
     const got = {};
     for (const d of det) if (d.match.productId) got[d.match.productId] = (got[d.match.productId] ?? 0) + d.facings;
     rec.rows = Object.entries(truth[k]).map(([img, n]) => {
@@ -35,7 +35,10 @@ for (const k of ["A", "B", "C"]) {
     });
     const truthIds = new Set(Object.keys(truth[k]).map((i) => products.find((x) => x.name === MAP[i]).id));
     rec.falsePositives = det.filter((d) => d.match.productId && !truthIds.has(d.match.productId)).map((d) => ({ label: d.label, as: products.find((x) => x.id === d.match.productId)?.name, facings: d.facings }));
-    rec.unmatched = det.filter((d) => !d.match.productId).map((d) => ({ label: d.label, facings: d.facings }));
+    rec.unmatched = det.filter((d) => !d.match.productId).map((d) => ({ label: d.label, status: d.match.status, cands: d.match.candidates.map((c) => c.name), facings: d.facings }));
+    rec.auto = det.filter((d) => d.match.status === "matched").length + "/" + det.length;
+    rec.via = det.map((d) => d.match.via);
+    rec.depth = det.map((d) => [d.depth_est, d.depth_conf]);
     rec.gaps = parsed.gaps;
     rec.quality = parsed.quality;
     rec.bboxes = det.filter((d) => d.bbox).length + "/" + det.length;
@@ -43,8 +46,9 @@ for (const k of ["A", "B", "C"]) {
     rec.parseError = String(e);
   }
   out.shelves[k] = rec;
-  console.log(k, r.status, r.ms + "ms", JSON.stringify(rec.rows ?? rec.parseError ?? r.error));
+  console.log(k, r.status, r.ms + "ms", rec.auto, JSON.stringify(rec.rows ?? rec.parseError ?? r.error), JSON.stringify(rec.unmatched), JSON.stringify(rec.via), JSON.stringify(rec.depth));
 }
+if (process.env.SKIP_DRAFT) { writeFileSync("/tmp/aiemp/vision/result2.json", JSON.stringify(out, null, 1)); process.exit(0); }
 // Prompt B — нэг барааны зураг
 const milk = readFileSync(`${ROOT}/public/products/milk-1l.png`);
 const cats = ["Хүнс", "Ундаа", "Чихэр", "Ахуй", "Эрүүл мэнд"];

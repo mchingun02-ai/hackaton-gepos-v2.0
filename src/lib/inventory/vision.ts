@@ -11,10 +11,10 @@ import { AiError, chat, qcfg, type ChatMsg } from "@/lib/agent/qwen";
 import type { TenantContext } from "@/lib/tenant/context";
 import { encS } from "@/lib/tenant/crypto";
 import { fail, rate } from "@/lib/tenant/http";
-import { aliasList, matchOne } from "./match";
-import { checkImage, newPhotoId, removePhotoFile, resultRef, writePhoto } from "./photos";
+import { aliasList, hamming, isHash, resolveDetection, SIMILAR_BITS, touchesEdge } from "./match";
+import { checkImage, newPhotoId, removePhotoFile, resultRef, sessionPhotoResults, writePhoto } from "./photos";
 import { parseShelf, SHELF_SYSTEM, shelfUser, type ShelfGap, type ShelfResult } from "./prompts";
-import { profilesFor, sessionProducts, sessionRow, whoOf } from "./sessions";
+import { depthFor, placeBreakdown, sessionPlaces, sessionProducts, sessionRow, whoOf, type PlaceQty } from "./sessions";
 
 type Ctx = TenantContext;
 export const COST_SHELF = 3;
@@ -46,32 +46,59 @@ export async function visionCall<T>(ctx: Ctx, kind: string, system: string, imag
 export type Detection = {
   i: number;
   label: string;
+  /** matched — автоматаар холбосон (ажилтан сонгохгүй) · ambiguous — 2–3 сонголт · unknown — шинэ бараа/алгасах */
+  status: "matched" | "ambiguous" | "unknown";
   productId: string | null;
   name: string | null;
-  via: "alias" | "barcode" | "name" | null;
+  via: "alias" | "barcode" | "name" | "price" | null;
   score: number;
-  suggestions: { id: string; name: string; score: number }[];
+  candidates: { id: string; name: string; score: number }[];
   facings: number;
   rows: number;
   confidence: number;
   bbox: [number, number, number, number] | null;
   priceTag: number | null;
+  /** урьдчилж бөглөх гүн: санасан (байршил/бараа) эсвэл AI ≥ 0.8 итгэлтэй; null бол асууна */
   depth: number | null;
+  depthSource: "place" | "product" | "ai" | null;
+  /** AI-ийн гүний санал (итгэл < 0.8 бол зөвхөн санал — автоматаар хэрэглэхгүй) */
+  depthEst: number | null;
+  depthConf: number;
+  /** өөр байршилд аль хэдийн тоологдсон (Тавиур 1: 12 · Агуулах: 24) */
+  elsewhere: PlaceQty[];
+  /** 60 сек дотор авсан өөр зурагт ирмэг дээр мөн гарсан — давхар тоологдсон байж магадгүй */
+  dupSuspect: { photoId: string; place: string } | null;
 };
-export type PhotoResult = { detections: Detection[]; gaps: ShelfGap[]; quality: ShelfResult["quality"]; retake: string | null };
+export type PhotoResult = { place: string; detections: Detection[]; gaps: ShelfGap[]; quality: ShelfResult["quality"]; retake: string | null };
 
-export async function shelfPhoto(ctx: Ctx, sid: string, buf: Buffer) {
+const DEPTH_AUTO = 0.8;
+const DUP_WINDOW_MS = 60_000;
+
+export type ShelfOpts = { place?: unknown; phash?: unknown; force?: unknown };
+
+export async function shelfPhoto(ctx: Ctx, sid: string, buf: Buffer, opts: ShelfOpts = {}) {
   const s = sessionRow(ctx, sid);
   if (s.status !== "counting") fail(409, "Тооллого тоолж буй төлөвт биш байна");
-  rate(`invphoto:${ctx.tenantId}`, 20);
   const img = checkImage(buf);
+  const place = (typeof opts.place === "string" && opts.place.trim() ? opts.place.trim() : sessionPlaces(ctx, s.id).nextPlace).slice(0, 40);
+  const phash = isHash(opts.phash) ? opts.phash : null;
+  // Ойролцоо зураг: кредит зарцуулахаас ӨМНӨ анхааруулна («Өмнөх зурагтай бараг ижил — солих уу?»)
+  if (phash && opts.force !== true && opts.force !== "1") {
+    const prev = ctx.db.all<{ id: string; place: string | null; phash: string | null }>(
+      `SELECT id, place, phash FROM inv_photos WHERE merchant = :tenant AND session_id = ? AND kind = 'shelf' AND status = 'done' AND phash IS NOT NULL ORDER BY at DESC`,
+      s.id,
+    );
+    const near = prev.map((p) => ({ ...p, d: hamming(phash, p.phash!) })).filter((p) => p.d <= SIMILAR_BITS).sort((a, b) => a.d - b.d)[0];
+    if (near) return { similar: { photoId: near.id, place: near.place ?? "", distance: near.d }, photo: null, message: `Өмнөх зурагтай бараг ижил (${near.place ?? ""}) — солих уу?`, result: null };
+  }
+  rate(`invphoto:${ctx.tenantId}`, 20);
   const res = reserve(ctx, "inv_photo", COST_SHELF);
   const id = newPhotoId();
   const w = whoOf(ctx);
   try {
     writePhoto(ctx, id, buf);
     ctx.db.run(
-      `INSERT INTO inv_photos (id, merchant, session_id, kind, path, w, h, status, model, by, at) VALUES (?, :tenant, ?, 'shelf', ?, ?, ?, 'processing', ?, ?, ?)`,
+      `INSERT INTO inv_photos (id, merchant, session_id, kind, path, w, h, status, model, by, at, place, phash) VALUES (?, :tenant, ?, 'shelf', ?, ?, ?, 'processing', ?, ?, ?, ?, ?)`,
       id,
       s.id,
       `${id}.bin`,
@@ -80,6 +107,8 @@ export async function shelfPhoto(ctx: Ctx, sid: string, buf: Buffer) {
       qcfg().vision,
       JSON.stringify({ id: w.id, name: w.name }),
       Date.now(),
+      place,
+      phash,
     );
   } catch (e) {
     refund(ctx, res);
@@ -95,35 +124,48 @@ export async function shelfPhoto(ctx: Ctx, sid: string, buf: Buffer) {
     refund(ctx, res);
     const msg = e instanceof AiError && e.status === 503 ? "AI тохируулаагүй" : "Зураг уншиж чадсангүй";
     ctx.db.run(`UPDATE inv_photos SET status = 'failed', error = ? WHERE id = ? AND merchant = :tenant`, msg, id);
-    return { photo: { id, status: "failed" as const, w: img.w, h: img.h }, message: `${msg}. Кредит буцаагдлаа — баркод эсвэл гараар үргэлжлүүлнэ үү.`, result: null };
+    return { similar: null, photo: { id, status: "failed" as const, w: img.w, h: img.h, place }, message: `${msg}. Кредит буцаагдлаа — баркод эсвэл гараар үргэлжлүүлнэ үү.`, result: null };
   }
   settle(ctx, res, id);
-  const profs = profilesFor(
-    ctx,
-    products.map((p) => p.id),
-  );
+  // 60 сек дотор өөр байршилд авсан зургууд (ирмэг дээрх ижил бараа → давхар байж магадгүй)
+  const recent = sessionPhotoResults(ctx, s.id).filter((p) => p.id !== id && Date.now() - p.at <= DUP_WINDOW_MS && p.result.place !== place);
+  const bp = placeBreakdown(ctx, s.id);
   const detections: Detection[] = parsed.items.map((it, i) => {
-    const m = matchOne(it, products, alias);
+    const m = resolveDetection(it, products, alias);
     const p = m.productId ? products.find((x) => x.id === m.productId) : undefined;
+    const known = m.productId ? depthFor(ctx, m.productId, place) : { depth: null, source: null };
+    // Урдаас авсан зурагт загвар «гүн 1»-ийг өндөр итгэлтэй гэж буцаадаг (хэмжсэн, docs/inventory-vision-accuracy.md) —
+    // гүнийг зөвхөн ≥ 2 ба итгэл ≥ 0.8 үед урьдчилж бөглөнө; бусад үед санал л (ажилтан нэг товшилтоор сонгоно)
+    const aiOk = it.depth_est != null && it.depth_est >= 2 && it.depth_conf >= DEPTH_AUTO;
+    const dup =
+      m.productId && touchesEdge(it.bbox)
+        ? recent.map((r) => ({ r, d: r.result.detections.find((x) => x.productId === m.productId && touchesEdge(x.bbox)) })).find((x) => x.d)
+        : undefined;
     return {
       i,
       label: it.label,
+      status: m.status,
       productId: m.productId,
       name: p?.name ?? null,
       via: m.via,
       score: m.score,
-      suggestions: m.suggestions,
+      candidates: m.candidates,
       facings: it.facings,
       rows: it.stacked_rows,
       confidence: it.confidence,
       bbox: it.bbox,
       priceTag: it.price_tag,
-      depth: m.productId ? (profs.get(m.productId)?.depth ?? null) : null,
+      depth: known.depth ?? (aiOk ? it.depth_est : null),
+      depthSource: known.depth ? known.source : aiOk ? "ai" : null,
+      depthEst: it.depth_est,
+      depthConf: it.depth_conf,
+      elsewhere: m.productId ? (bp.get(m.productId) ?? []).filter((x) => x.place !== place) : [],
+      dupSuspect: dup ? { photoId: dup.r.id, place: dup.r.result.place } : null,
     };
   });
   const q = parsed.quality;
   const retake = q.blurry ? "Зураг бүдэг байна. Дахин авна уу." : q.too_dark ? "Зураг харанхуй байна. Гэрэлтэй газар дахин авна уу." : null;
-  const result: PhotoResult = { detections, gaps: parsed.gaps, quality: q, retake };
+  const result: PhotoResult = { place, detections, gaps: parsed.gaps, quality: q, retake };
   ctx.db.run(`UPDATE inv_photos SET status = 'done', result = ? WHERE id = ? AND merchant = :tenant`, encS(ctx, JSON.stringify(result), resultRef(id)), id);
-  return { photo: { id, status: "done" as const, w: img.w, h: img.h }, message: retake, result };
+  return { similar: null, photo: { id, status: "done" as const, w: img.w, h: img.h, place }, message: retake, result, places: sessionPlaces(ctx, s.id).places };
 }

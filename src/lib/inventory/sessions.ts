@@ -169,11 +169,13 @@ export function sessionRow(ctx: Ctx, id: string): SessionRow {
   return ctx.db.one<SessionRow>(`SELECT * FROM inv_sessions WHERE id = ? AND merchant = :tenant`, String(id).slice(0, 64)) ?? fail(404, "Тооллого олдсонгүй");
 }
 
-export async function createSession(ctx: Ctx, inp: { name?: unknown; scope?: unknown; scopeRef?: unknown; blind?: unknown }) {
+export async function createSession(ctx: Ctx, inp: { name?: unknown; scope?: unknown; scopeRef?: unknown; blind?: unknown; ensure?: unknown }) {
   const scope = inp.scope === "category" ? "category" : "all";
   const scopeRef = scope === "category" ? String(inp.scopeRef ?? "").trim().slice(0, 80) : null;
   if (scope === "category" && !scopeRef) fail(400, "Ангиллаа сонгоно уу");
   const dup = ctx.db.one<{ id: string }>(`SELECT id FROM inv_sessions WHERE merchant = :tenant AND ${ACTIVE} AND scope = ? AND COALESCE(scope_ref,'') = ?`, scope, scopeRef ?? "");
+  // «Тоолж эхлэх»: идэвхтэйг үргэлжлүүлнэ (байхгүй бол үүсгэнэ)
+  if (dup && inp.ensure === true) return getSession(ctx, dup.id);
   if (dup) fail(409, "Энэ хүрээнд дуусаагүй тооллого байна — түүнийг үргэлжлүүлнэ үү", "active_exists");
   const products = (await ctx.pos.listProducts(scope === "category" ? { category: scopeRef! } : {})).filter((p) => p.active);
   if (!products.length) fail(400, "Энэ хүрээнд бараа алга");
@@ -271,9 +273,11 @@ const unitParts = (u: string | null) => {
 const unitValue = (l: Pick<LineRow, "cost" | "price">) => l.cost ?? l.price ?? 0;
 
 /** Мөрийн харагдац — хараагүй (blind) тооллогод ажилтан хүлээгдэж буй үлдэгдэл, зөрүүг харахгүй */
-function lineView(l: LineRow, reveal: boolean, prof?: Profile & { method: Method }) {
+export type PlaceQty = { place: string; qty: number; photo: boolean };
+function lineView(l: LineRow, reveal: boolean, prof?: Profile & { method: Method }, byPlace: PlaceQty[] = []) {
   const u = unitParts(l.unit);
   return {
+    byPlace,
     productId: l.product_id,
     name: l.name,
     barcode: l.barcode,
@@ -296,12 +300,14 @@ export function getSession(ctx: Ctx, id: string) {
   );
   const counts = ctx.db.all<CountRow>(`SELECT * FROM inv_counts WHERE merchant = :tenant AND session_id = ? AND voided_at IS NULL ORDER BY at DESC`, s.id);
   const done = lines.filter((l) => l.status === "counted" || l.status === "recounted" || l.status === "skipped").length;
+  const bp = placeBreakdown(ctx, s.id);
   return {
     session: sessionView(s),
+    ...sessionPlaces(ctx, s.id),
     reveal,
     canApprove: isManager(ctx),
     progress: { total: lines.length, done, pct: lines.length ? Math.round((done / lines.length) * 100) : 0 },
-    lines: lines.map((l) => lineView(l, reveal, profs.get(l.product_id))),
+    lines: lines.map((l) => lineView(l, reveal, profs.get(l.product_id), bp.get(l.product_id))),
     counts: counts.map((c) => ({
       id: c.id,
       productId: c.product_id,
@@ -326,9 +332,38 @@ const safeJson = (s: string) => {
   }
 };
 
+/** Бараа бүрийн тоо байршлаар (Тавиур 1: 12 · Агуулах: 24) */
+export function placeBreakdown(ctx: Ctx, sid: string, pid?: string) {
+  const rows = ctx.db.all<{ product_id: string; place: string | null; q: number; ph: number }>(
+    `SELECT product_id, place, SUM(qty) q, MAX(CASE WHEN source = 'photo' THEN 1 ELSE 0 END) ph FROM inv_counts
+     WHERE merchant = :tenant AND session_id = ? AND voided_at IS NULL ${pid ? "AND product_id = ?" : ""} GROUP BY product_id, place ORDER BY MIN(at)`,
+    ...(pid ? [sid, pid] : [sid]),
+  );
+  const m = new Map<string, PlaceQty[]>();
+  for (const r of rows) {
+    const l = m.get(r.product_id) ?? [];
+    l.push({ place: r.place || "Бусад", qty: Math.round(r.q * 1000) / 1000, photo: !!r.ph });
+    m.set(r.product_id, l);
+  }
+  return m;
+}
+
+/** Тооллогод ашигласан байршлууд (зураг + тоо), дараагийн «Тавиур N» */
+export function sessionPlaces(ctx: Ctx, sid: string) {
+  const rows = ctx.db.all<{ place: string }>(
+    `SELECT place FROM (SELECT place, at FROM inv_photos WHERE merchant = :tenant AND session_id = ? AND place IS NOT NULL
+      UNION ALL SELECT place, at FROM inv_counts WHERE merchant = :tenant AND session_id = ? AND place IS NOT NULL AND voided_at IS NULL) GROUP BY place ORDER BY MIN(at)`,
+    sid,
+    sid,
+  );
+  const places = rows.map((r) => r.place).filter(Boolean);
+  const n = Math.max(0, ...places.map((p) => Number(/^Тавиур (\d+)$/.exec(p)?.[1] ?? 0)));
+  return { places, nextPlace: `Тавиур ${n + 1}` };
+}
+
 /** Идэвхтэй тооллогын бараанууд (vision-ий нэр дэвшигч, тааруулалт) */
 export function sessionProducts(ctx: Ctx, sid: string) {
-  return lineRows(ctx, sid).map((l) => ({ id: l.product_id, name: l.name, barcodes: l.barcode ? [l.barcode] : [], status: l.status }));
+  return lineRows(ctx, sid).map((l) => ({ id: l.product_id, name: l.name, barcodes: l.barcode ? [l.barcode] : [], price: l.price, status: l.status }));
 }
 
 /* ───────── тоо нэмэх ───────── */
@@ -345,6 +380,8 @@ export type CountInput = {
   place?: unknown;
   profile?: unknown;
   confirmLarge?: unknown;
+  /** тухайн байршилд тоо байвал: add — нэмэх, replace — солих (өгөөгүй бол асууна) */
+  mode?: unknown;
 };
 
 /** Мөрийн нийлбэр, зөрүү, түвшинг дахин тооцно */
@@ -400,6 +437,18 @@ export async function addCount(ctx: Ctx, sid: string, b: CountInput, idemKey?: s
     line = ctx.db.one<LineRow>(`SELECT * FROM inv_lines WHERE merchant = :tenant AND session_id = ? AND product_id = ?`, s.id, p!.id)!;
   }
   const pid = line!.product_id;
+  const place = typeof b.place === "string" && b.place.trim() ? b.place.trim().slice(0, 40) : null;
+
+  // Давхар тоололтоос: энэ байршилд энэ бараа аль хэдийн тоологдсон бол «Нэмэх / Солих» асууна
+  if (place && b.mode !== "add" && b.mode !== "replace") {
+    const ex = ctx.db.one<{ n: number; q: number | null; ph: number }>(
+      `SELECT COUNT(*) n, SUM(qty) q, MAX(CASE WHEN source = 'photo' THEN 1 ELSE 0 END) ph FROM inv_counts WHERE merchant = :tenant AND session_id = ? AND product_id = ? AND place = ? AND voided_at IS NULL`,
+      s.id,
+      pid,
+      place,
+    )!;
+    if (ex.n) return { duplicate: false, conflict: { place, qty: ex.q ?? 0, photo: !!ex.ph }, count: null, line: lineFor(ctx, s, pid) };
+  }
 
   // профайл (гүн, хайрцаг дахь тоо …) — арга бүрт санана
   const pf = b.profile && typeof b.profile === "object" ? (b.profile as Record<string, unknown>) : {};
@@ -430,6 +479,8 @@ export async function addCount(ctx: Ctx, sid: string, b: CountInput, idemKey?: s
     ctx.db.run(`UPDATE inv_lines SET system_qty_at_count = ? WHERE merchant = :tenant AND session_id = ? AND product_id = ? AND system_qty_at_count IS NULL`, st?.qty ?? line!.expected_qty, s.id, pid);
   }
   const w = whoOf(ctx);
+  if (place && b.mode === "replace")
+    ctx.db.run(`UPDATE inv_counts SET voided_at = ? WHERE merchant = :tenant AND session_id = ? AND product_id = ? AND place = ? AND voided_at IS NULL`, Date.now(), s.id, pid, place);
   try {
     ctx.db.run(
       `INSERT INTO inv_counts (id, merchant, session_id, product_id, method, inputs, qty, source, photo_id, confidence, place, by, at) VALUES (?, :tenant, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -442,7 +493,7 @@ export async function addCount(ctx: Ctx, sid: string, b: CountInput, idemKey?: s
       source,
       photoId,
       confidence,
-      typeof b.place === "string" ? b.place.slice(0, 40) : null,
+      place,
       packWho(w),
       Date.now(),
     );
@@ -460,7 +511,7 @@ export async function addCount(ctx: Ctx, sid: string, b: CountInput, idemKey?: s
 function lineFor(ctx: Ctx, s: SessionRow, pid: string) {
   const l = ctx.db.one<LineRow>(`SELECT * FROM inv_lines WHERE merchant = :tenant AND session_id = ? AND product_id = ?`, s.id, pid);
   if (!l) return null;
-  return lineView({ ...l, name: decS(ctx, l.name, nameRef(s.id, pid)) }, !s.blind || isManager(ctx), profileOf(ctx, pid));
+  return lineView({ ...l, name: decS(ctx, l.name, nameRef(s.id, pid)) }, !s.blind || isManager(ctx), profileOf(ctx, pid), placeBreakdown(ctx, s.id, pid).get(pid));
 }
 
 export function voidCount(ctx: Ctx, sid: string, cid: string) {
@@ -471,6 +522,89 @@ export function voidCount(ctx: Ctx, sid: string, cid: string) {
   recompute(ctx, s.id, c.product_id, getThresholds(ctx));
   changed(ctx, s.id);
   return { ok: true, line: lineFor(ctx, s, c.product_id) };
+}
+
+/* ───────── зургийн тоо батлах (байршлыг СОЛИНО) ───────── */
+
+/** Байршлын гүн: inv_profiles-д `${product}@${place}` түлхүүрээр (схем хөндөхгүй) */
+const placeKey = (pid: string, place: string) => `${pid}@${place}`.slice(0, 120);
+export function depthFor(ctx: Ctx, pid: string, place: string | null): { depth: number | null; source: "place" | "product" | null } {
+  if (place) {
+    const r = ctx.db.one<{ depth: number | null }>(`SELECT depth FROM inv_profiles WHERE merchant = :tenant AND product_id = ?`, placeKey(pid, place));
+    if (r?.depth) return { depth: r.depth, source: "place" };
+  }
+  const p = profileOf(ctx, pid);
+  return p.depth ? { depth: p.depth, source: "product" } : { depth: null, source: null };
+}
+
+export type PhotoItem = { productId?: unknown; f?: unknown; d?: unknown; r?: unknown; l?: unknown; confidence?: unknown };
+
+/**
+ * Нэг тавиурын зургийн үр дүнг батлах. Тухайн байршлын өмнөх ЗУРГИЙН тоог бүгдийг хүчингүй болгоод шинээр бичнэ
+ * (ижил тавиурыг дахин авбал солигдоно, нэмэгдэхгүй). Дахин илгээвэл ижил үр дүн (idempotent).
+ */
+export async function confirmPhoto(ctx: Ctx, sid: string, photoId: string, b: { place?: unknown; items?: unknown }) {
+  const s = sessionRow(ctx, sid);
+  if (s.status !== "counting") fail(409, "Тооллого тоолж буй төлөвт биш байна", "not_counting");
+  const ph =
+    ctx.db.one<{ id: string; place: string | null; status: string }>(`SELECT id, place, status FROM inv_photos WHERE id = ? AND merchant = :tenant AND session_id = ? AND kind = 'shelf'`, String(photoId).slice(0, 64), s.id) ??
+    fail(404, "Зураг олдсонгүй");
+  const place = (typeof b.place === "string" && b.place.trim() ? b.place.trim() : ph.place || "Тавиур 1").slice(0, 40);
+  const items = (Array.isArray(b.items) ? b.items : []).slice(0, 60) as PhotoItem[];
+  const lines = new Map(ctx.db.all<LineRow>(`SELECT * FROM inv_lines WHERE merchant = :tenant AND session_id = ?`, s.id).map((l) => [l.product_id, l]));
+  const parsed = items.map((it, i) => {
+    const pid = typeof it.productId === "string" ? it.productId : "";
+    if (!lines.has(pid)) fail(400, "Тооллогод байхгүй бараа");
+    let c;
+    try {
+      c = computeQty("facings", { f: Number(it.f), d: Number(it.d), r: it.r == null ? 1 : Number(it.r), l: it.l == null ? 0 : Number(it.l) }, {}, unitParts(lines.get(pid)!.unit).unit);
+    } catch (e) {
+      if (e instanceof MethodError) fail(400, e.message);
+      throw e;
+    }
+    const conf = typeof it.confidence === "number" && Number.isFinite(it.confidence) ? Math.min(1, Math.max(0, it.confidence)) : null;
+    return { i, pid, c, conf };
+  });
+  const now = Date.now();
+  // энэ байршлын өмнөх зургийн тоо (өөр зураг ч бай) → хүчингүй
+  const old = ctx.db.all<{ product_id: string }>(`SELECT DISTINCT product_id FROM inv_counts WHERE merchant = :tenant AND session_id = ? AND place = ? AND source = 'photo' AND voided_at IS NULL`, s.id, place);
+  ctx.db.run(`UPDATE inv_counts SET voided_at = ? WHERE merchant = :tenant AND session_id = ? AND place = ? AND source = 'photo' AND voided_at IS NULL`, now, s.id, place);
+  ctx.db.run(`UPDATE inv_photos SET place = ? WHERE id = ? AND merchant = :tenant`, place, ph.id);
+  const w = packWho(whoOf(ctx));
+  const stock = new Map((parsed.length ? await ctx.pos.stock([...new Set(parsed.map((x) => x.pid))]) : []).map((x) => [x.productId, x.qty]));
+  for (const x of parsed) {
+    const l = lines.get(x.pid)!;
+    if (l.system_qty_at_count == null)
+      ctx.db.run(`UPDATE inv_lines SET system_qty_at_count = ? WHERE merchant = :tenant AND session_id = ? AND product_id = ? AND system_qty_at_count IS NULL`, stock.get(x.pid) ?? l.expected_qty, s.id, x.pid);
+    const id = `c${createHash("sha256").update(`${ctx.tenantId}|${ph.id}|${x.i}|${x.pid}`).digest("hex").slice(0, 24)}`;
+    ctx.db.run(
+      `INSERT INTO inv_counts (id, merchant, session_id, product_id, method, inputs, qty, source, photo_id, confidence, place, by, at) VALUES (?, :tenant, ?, ?, 'facings', ?, ?, 'photo', ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET inputs = excluded.inputs, qty = excluded.qty, confidence = excluded.confidence, place = excluded.place, voided_at = NULL, at = excluded.at`,
+      id,
+      s.id,
+      x.pid,
+      JSON.stringify(x.c.used),
+      x.c.qty,
+      ph.id,
+      x.conf,
+      place,
+      w,
+      now,
+    );
+    // гүнийг бараа + байршлаар санана (дараагийн удаа бөглөгдөнө)
+    saveProfile(ctx, x.pid, { method: "facings", depth: x.c.used.d });
+    ctx.db.run(
+      `INSERT INTO inv_profiles (merchant, product_id, method, depth, updated_at) VALUES (:tenant, ?, 'facings', ?, ?) ON CONFLICT(merchant, product_id) DO UPDATE SET depth = excluded.depth, updated_at = excluded.updated_at`,
+      placeKey(x.pid, place),
+      x.c.used.d ?? null,
+      now,
+    );
+  }
+  const th = getThresholds(ctx);
+  const touched = new Set([...old.map((o) => o.product_id), ...parsed.map((x) => x.pid)]);
+  for (const pid of touched) recompute(ctx, s.id, pid, th);
+  changed(ctx, s.id);
+  return { ok: true, place, replaced: old.length, saved: parsed.length, lines: [...touched].map((pid) => lineFor(ctx, s, pid)), ...sessionPlaces(ctx, s.id) };
 }
 
 /* ───────── төлөв ───────── */
@@ -610,6 +744,7 @@ export function varianceReport(ctx: Ctx, sid: string, trusted = false) {
   if (s.blind && !isManager(ctx) && !trusted) fail(403, "Зөрүүг менежер харна");
   const lines = lineRows(ctx, s.id);
   const methods = ctx.db.all<{ method: string; n: number }>(`SELECT method, COUNT(*) n FROM inv_counts WHERE merchant = :tenant AND session_id = ? AND voided_at IS NULL GROUP BY method`, s.id);
+  const bp = placeBreakdown(ctx, s.id);
   const rep = report(
     lines.map((l) => ({ productId: l.product_id, name: l.name, status: l.status, counted: l.counted_qty, system: l.system_qty_at_count, variance: l.variance, level: l.level, unitValue: unitValue(l) })),
     methods,
@@ -623,7 +758,7 @@ export function varianceReport(ctx: Ctx, sid: string, trusted = false) {
     ...rep,
     methods: rep.methods.map((m) => ({ ...m, label: METHOD_LABEL[m.method as Method] ?? m.method })),
     lines: lines
-      .map((l) => ({ ...lineView(l, true), value: l.variance != null ? Math.round(l.variance * unitValue(l)) : null }))
+      .map((l) => ({ ...lineView(l, true, undefined, bp.get(l.product_id)), value: l.variance != null ? Math.round(l.variance * unitValue(l)) : null }))
       .sort((a, b) => Math.abs(b.value ?? 0) - Math.abs(a.value ?? 0) || (a.status === "pending" ? 1 : 0) - (b.status === "pending" ? 1 : 0)),
     adjustments,
     thresholds: getThresholds(ctx),

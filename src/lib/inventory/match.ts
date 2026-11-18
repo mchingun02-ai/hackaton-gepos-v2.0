@@ -1,6 +1,6 @@
 /**
  * Каталогтой тааруулах (docs/ARCHITECTURE.md §5.3) — цэвэр функц.
- *  1. ≤ 80 бараатай хүрээнд нэр дэвшигчдийг `k` алиасаар prompt-д өгнө; сервер k → product_id буулгана.
+ *  1. ≤ 200 бараатай бол каталогийг `k` алиасаар (нэр, баркод, үнэ) prompt-д өгнө; сервер k → product_id буулгана.
  *  2. Бусад үед: баркод яг таарах → эс бөгөөс нэрийн үгээр (IDF жинтэй хамралт) эхний 3.
  *     Оноо ≥ 0.6 ба 2-р байрнаас ≥ 0.15 зөрүүтэй бол автоматаар холбоно, бусад үед ажилтан сонгоно.
  */
@@ -84,14 +84,92 @@ export function matchOne(
   return { productId: auto ? s[0].id : null, via: auto ? "name" : null, score: s[0]?.score ?? 0, suggestions: s };
 }
 
-/** ≤ 80 бараа бол алиас жагсаалт (prompt-д), үгүй бол хоосон */
-export function aliasList(products: { id: string; name: string }[], max = 80) {
+/** ≤ 200 бараа бол компакт алиас жагсаалт (prompt-д: k, n нэр, b баркод, p үнэ), их бол хоосон */
+export function aliasList(products: { id: string; name: string; barcodes?: string[]; price?: number | null }[], max = 200) {
   const alias = new Map<string, string>();
-  if (products.length > max) return { cands: [] as { k: string; name: string }[], alias };
+  if (products.length > max) return { cands: [] as { k: string; n: string; b?: string; p?: number }[], alias };
   const cands = products.map((p, i) => {
     const k = `a${i + 1}`;
     alias.set(k, p.id);
-    return { k, name: p.name };
+    return { k, n: p.name, ...(p.barcodes?.[0] ? { b: p.barcodes[0] } : {}), ...(p.price ? { p: Math.round(p.price) } : {}) };
   });
   return { cands, alias };
 }
+
+export type Resolved = {
+  status: "matched" | "ambiguous" | "unknown";
+  productId: string | null;
+  via: "alias" | "barcode" | "name" | "price" | null;
+  score: number;
+  /** ambiguous/unknown үед ажилтанд санал болгох 2–3 бараа */
+  candidates: { id: string; name: string; score: number }[];
+};
+
+/**
+ * Загварын k + баркод + үнийн шошго + нэрийн оноог нэгтгэж шийднэ (§5.3, «сонгохгүйгээр»):
+ *  · k (жагсаалтаас) → таарсан, гэхдээ нэр нь өөр бараатай хүчтэй (≥ 0.6) таарч, k-ийнх сул бол → эргэлзээтэй
+ *  · баркод яг → таарсан · нэрээр ≥ 0.6 ба 2-р байрнаас ≥ 0.15 → таарсан
+ *  · ойролцоо хоёр нэр дэвшигчээс зөвхөн нэгнийх нь үнэ шошготой таарвал → таарсан
+ *  · бусад: нэр ≥ 0.3 бол эргэлзээтэй (2–3 сонголт), эс бөгөөс танихгүй
+ */
+export function resolveDetection(
+  det: { k?: string | null; label: string; brand?: string | null; size?: string | null; barcode?: string | null; price_tag?: number | null },
+  products: (MatchProduct & { price?: number | null })[],
+  alias: ReadonlyMap<string, string>,
+): Resolved {
+  const ranked = rankByName([det.brand, det.label, det.size].filter(Boolean).join(" "), products, 3);
+  const byId = (id: string) => products.find((x) => x.id === id);
+  if (det.k && alias.has(det.k)) {
+    const id = alias.get(det.k)!;
+    const p = byId(id);
+    const own = ranked.find((r) => r.id === id)?.score ?? 0;
+    const other = ranked[0] && ranked[0].id !== id && ranked[0].score >= 0.6 && own < 0.2 ? ranked[0] : null;
+    const priceOk = det.price_tag != null && p?.price != null && Math.round(p.price) === Math.round(det.price_tag);
+    if (p && (!other || priceOk)) return { status: "matched", productId: id, via: "alias", score: 1, candidates: [{ id, name: p.name, score: 1 }] };
+    if (p && other) return { status: "ambiguous", productId: null, via: null, score: own, candidates: [{ id, name: p.name, score: own }, other] };
+  }
+  if (det.barcode) {
+    const p = products.find((x) => x.barcodes?.includes(det.barcode!));
+    if (p) return { status: "matched", productId: p.id, via: "barcode", score: 1, candidates: [{ id: p.id, name: p.name, score: 1 }] };
+  }
+  if (ranked.length && ranked[0].score >= 0.6 && (ranked.length < 2 || ranked[0].score - ranked[1].score >= 0.15))
+    return { status: "matched", productId: ranked[0].id, via: "name", score: ranked[0].score, candidates: ranked };
+  const close = ranked.filter((r) => r.score >= 0.3);
+  if (det.price_tag != null && close.length) {
+    const hit = close.filter((r) => Math.round(byId(r.id)?.price ?? -1) === Math.round(det.price_tag!));
+    if (hit.length === 1) return { status: "matched", productId: hit[0].id, via: "price", score: hit[0].score, candidates: close };
+  }
+  if (close.length) return { status: "ambiguous", productId: null, via: null, score: close[0].score, candidates: close.slice(0, 3) };
+  return { status: "unknown", productId: null, via: null, score: ranked[0]?.score ?? 0, candidates: ranked.slice(0, 3) };
+}
+
+/* ───────── ойролцоо зураг (dHash) ───────── */
+
+/** dHash: 9×8 саарал (мөрөөр) пикселээс 64 бит → 16 hex. `gray` урт = 72. */
+export function dhash(gray: ArrayLike<number>): string {
+  if (gray.length !== 72) throw new Error("dhash: 9×8 саарал пиксел хэрэгтэй");
+  let hex = "";
+  for (let y = 0; y < 8; y++) {
+    let byte = 0;
+    for (let x = 0; x < 8; x++) byte = (byte << 1) | (gray[y * 9 + x] > gray[y * 9 + x + 1] ? 1 : 0);
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+export const isHash = (h: unknown): h is string => typeof h === "string" && /^[0-9a-f]{16}$/.test(h);
+/** Хоёр dHash-ийн ялгаатай битийн тоо (0 = ижил, ≤ 10 ≈ бараг ижил зураг) */
+export function hamming(a: string, b: string): number {
+  let n = 0;
+  for (let i = 0; i < 16; i += 4) {
+    let x = parseInt(a.slice(i, i + 4), 16) ^ parseInt(b.slice(i, i + 4), 16);
+    while (x) {
+      n += x & 1;
+      x >>>= 1;
+    }
+  }
+  return n;
+}
+export const SIMILAR_BITS = 10;
+
+/** Хүрээ зургийн ирмэгт хүрч байгаа эсэх (хоёр зурагт давхар орсон байж болох) */
+export const touchesEdge = (b: readonly number[] | null | undefined, m = 0.04) => !!b && (b[0] <= m || b[0] + b[2] >= 1 - m);

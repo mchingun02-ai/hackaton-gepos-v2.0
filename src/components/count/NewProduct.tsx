@@ -111,7 +111,7 @@ export function NewProduct({ sid, barcode, nav }: { sid?: string; barcode?: stri
               <CamIcon size={32} />
             </div>
             <div className="mt-4 text-[18px] font-bold text-ink">Барааны урд талын зургийг авна уу</div>
-            <div className="mt-1 text-[15px] text-mute">Нэр, хэмжээ тод харагдахаар ойроос. AI нэр, баркод, ангиллыг уншиж ноорог бэлдэнэ — та шалгаж батална.</div>
+            <div className="mt-1 text-[15px] text-mute">Нэр, хэмжээ, баркод тод харагдахаар ойроос. AI савлагааны зургаас нэр, хэмжээ, баркодыг уншиж ноорог бэлдэнэ — та шалгаж батална.</div>
             {barcode && <div className="mt-3 text-[14px] text-ink tnum">Баркод: {barcode}</div>}
           </div>
         ) : (
@@ -155,8 +155,8 @@ export function NewProduct({ sid, barcode, nav }: { sid?: string; barcode?: stri
                   placeholder="Баркодгүй бол хоосон"
                   className={cx("sp-field h-[56px] min-w-0 flex-1 text-[18px] tnum", bcBad && "!shadow-[inset_0_0_0_2px_var(--danger)]")}
                 />
-                <button type="button" onClick={() => setScan(true)} aria-label="Баркод уншуулах" className="sp-tap grid h-[56px] w-[56px] place-items-center rounded-[16px] bg-accent-soft text-accent">
-                  <Icon name="scan" size={24} />
+                <button type="button" onClick={() => setScan(true)} className="sp-tap flex h-[56px] shrink-0 items-center gap-1.5 rounded-[16px] bg-accent-soft px-3 text-[14px] font-semibold text-accent">
+                  <Icon name="scan" size={20} /> Баркод уншуулах
                 </button>
               </div>
               {(bcBad || x?.barcodeRejected) && <span className="mt-1 block text-[13.5px] text-danger">Баркодын шалгах орон таарахгүй — баркодоо уншуулна уу.</span>}

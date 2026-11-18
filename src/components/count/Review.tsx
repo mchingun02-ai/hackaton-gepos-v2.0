@@ -98,6 +98,7 @@ export function Review({ sid, me, nav, onDone }: { sid: string; me: Me; nav: Nav
                   </div>
                   {l.counted != null && (
                     <div className="mt-1 flex flex-wrap gap-x-3 text-[14px] text-mute tnum">
+                      {l.byPlace && l.byPlace.length > 1 && <span className="w-full">{l.byPlace.map((x) => `${x.place}: ${fmt(x.qty)}`).join(" · ")}</span>}
                       <span>Систем {fmt(l.system)}</span>
                       <span>→ Тоолсон {fmt(l.counted)}</span>
                       <span className={cx("font-semibold", (l.variance ?? 0) < 0 ? "text-danger" : (l.variance ?? 0) > 0 ? "text-ok" : "text-ink")}>

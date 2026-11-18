@@ -20,6 +20,7 @@ export function Submit({ sid, nav, onDone, pending }: { sid: string; nav: Nav; o
   }, [sid]);
 
   const open = (data?.lines ?? []).filter((l) => l.status === "pending" || l.status === "recount");
+  const done = (data?.lines ?? []).filter((l) => l.counted != null);
   async function submit() {
     setBusy(true);
     setErr(null);
@@ -68,6 +69,22 @@ export function Submit({ sid, nav, onDone, pending }: { sid: string; nav: Nav; o
               </>
             )}
           </>
+        )}
+        {done.length > 0 && (
+          <section>
+            <h2 className="mb-2 px-1 text-[15px] font-semibold text-mute">Тоолсон — байршлаар</h2>
+            <ul className="divide-y divide-[var(--sp-sep)] overflow-hidden rounded-[20px] bg-paper shadow-[0_0_0_0.5px_var(--sp-sep)]">
+              {done.map((l) => (
+                <li key={l.productId} className="flex min-h-[56px] items-center gap-3 px-4 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[15.5px] font-semibold text-ink">{l.name}</div>
+                    <div className="truncate text-[13px] text-mute tnum">{(l.byPlace ?? []).map((x) => `${x.place}: ${x.qty}`).join(" · ")}</div>
+                  </div>
+                  <span className="text-[18px] font-bold text-ink tnum">{l.counted}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {err && <ErrorNote>{err}</ErrorNote>}
       </div>

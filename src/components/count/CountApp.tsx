@@ -19,7 +19,7 @@ import type { Me } from "./types";
 
 export type View =
   | { k: "home" }
-  | { k: "count"; sid: string; open?: string }
+  | { k: "count"; sid: string; open?: string; scan?: boolean }
   | { k: "photo"; sid: string; shot: PhotoView }
   | { k: "submit"; sid: string }
   | { k: "review"; sid: string }
@@ -126,8 +126,9 @@ export default function CountApp() {
   return (
     <div className="min-h-dvh bg-stage text-ink">
       {view.k === "home" && <Home me={me} nav={nav} pending={pending} onLogout={logout} />}
-      {view.k === "count" && <Counting key={view.sid} sid={view.sid} openProduct={view.open} me={me} nav={nav} pending={pending} />}
-      {view.k === "photo" && <PhotoResult sid={view.sid} shot={view.shot} nav={nav} />}
+      {view.k === "count" && <Counting key={view.sid} sid={view.sid} openProduct={view.open} scanOnOpen={view.scan} me={me} nav={nav} pending={pending} />}
+      {/* key: зураг бүрт шинэ төлөв (дараагийн тавиур өмнөхийн мөр, байршлыг өвлөхгүй) */}
+      {view.k === "photo" && <PhotoResult key={`${view.shot.url}|${view.shot.resp.photo?.id ?? "similar"}`} sid={view.sid} shot={view.shot} nav={nav} />}
       {view.k === "submit" && <Submit sid={view.sid} nav={nav} onDone={home} pending={pending} />}
       {view.k === "review" && <Review sid={view.sid} me={me} nav={nav} onDone={home} />}
       {view.k === "new" && <NewProduct sid={view.sid} barcode={view.barcode} nav={nav} />}

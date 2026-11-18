@@ -4,10 +4,30 @@
  * Утасны камерын бүтэн зураг → урт тал ≤ 1600px, JPEG q≈0.82 (тавиурын фэйсинг харагдахуйц, 4 МБ-аас бага).
  * EXIF эргэлтийг createImageBitmap (imageOrientation) эсвэл <img> (Safari автоматаар) зөв болгоно.
  */
+import { dhash } from "@/lib/inventory/match";
+
 const MAX_EDGE = 1600;
 const QUALITY = 0.82;
 
-export type Shot = { blob: Blob; url: string; w: number; h: number };
+export type Shot = { blob: Blob; url: string; w: number; h: number; phash: string | null };
+
+/** Ойролцоо зураг илрүүлэх dHash (9×8 саарал) — давхар тоололтоос */
+function phashOf(src: CanvasImageSource): string | null {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 9;
+    c.height = 8;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    if (!g) return null;
+    g.drawImage(src, 0, 0, 9, 8);
+    const d = g.getImageData(0, 0, 9, 8).data;
+    const gray = new Array<number>(72);
+    for (let i = 0; i < 72; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    return dhash(gray);
+  } catch {
+    return null;
+  }
+}
 
 async function load(file: Blob): Promise<{ src: CanvasImageSource; w: number; h: number; close?: () => void }> {
   if (typeof createImageBitmap === "function") {
@@ -55,5 +75,5 @@ export async function prepareShot(file: File): Promise<Shot> {
     q -= 0.15;
   }
   if (!blob) throw new Error("Зураг хадгалж чадсангүй");
-  return { blob, url: URL.createObjectURL(blob), w, h };
+  return { blob, url: URL.createObjectURL(blob), w, h, phash: phashOf(c) };
 }

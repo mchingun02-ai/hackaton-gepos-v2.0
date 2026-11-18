@@ -25,7 +25,9 @@ export type SessionSummary = {
 };
 
 export type LineStatus = "pending" | "counted" | "recount" | "recounted" | "skipped";
+export type PlaceQty = { place: string; qty: number; photo: boolean };
 export type Line = {
+  byPlace?: PlaceQty[];
   productId: string;
   name: string;
   barcode: string | null;
@@ -44,6 +46,8 @@ export type Line = {
 export type CountItem = { id: string; productId: string; method: Method; methodLabel: string; inputs: Record<string, number>; qty: number; source: string; photoId: string | null; confidence: number | null; place: string | null; by: string; at: number };
 export type SessionFull = {
   session: Omit<SessionSummary, "total" | "done" | "critical">;
+  places: string[];
+  nextPlace: string;
   reveal: boolean;
   canApprove: boolean;
   progress: { total: number; done: number; pct: number };
@@ -54,23 +58,32 @@ export type SessionFull = {
 export type Detection = {
   i: number;
   label: string;
+  status: "matched" | "ambiguous" | "unknown";
   productId: string | null;
   name: string | null;
   via: string | null;
   score: number;
-  suggestions: { id: string; name: string; score: number }[];
+  candidates: { id: string; name: string; score: number }[];
   facings: number;
   rows: number;
   confidence: number;
   bbox: [number, number, number, number] | null;
   priceTag: number | null;
   depth: number | null;
+  depthSource: "place" | "product" | "ai" | null;
+  depthEst: number | null;
+  depthConf: number;
+  elsewhere: PlaceQty[];
+  dupSuspect: { photoId: string; place: string } | null;
 };
 export type PhotoResp = {
-  photo: { id: string; status: "done" | "failed"; w: number | null; h: number | null };
+  places?: string[];
+  similar: { photoId: string; place: string; distance: number } | null;
+  photo: { id: string; status: "done" | "failed"; w: number | null; h: number | null; place: string } | null;
   message: string | null;
-  result: { detections: Detection[]; gaps: { near_label: string; price_tag_text: string | null; bbox: number[] | null }[]; quality: { blurry: boolean; too_dark: boolean; partial_shelf: boolean }; retake: string | null } | null;
+  result: { place: string; detections: Detection[]; gaps: { near_label: string; price_tag_text: string | null; bbox: number[] | null }[]; quality: { blurry: boolean; too_dark: boolean; partial_shelf: boolean }; retake: string | null } | null;
 };
+export type ConfirmResp = { ok: boolean; place: string; replaced: number; saved: number; places: string[]; nextPlace: string };
 
 export type Variance = {
   session: SessionSummary;

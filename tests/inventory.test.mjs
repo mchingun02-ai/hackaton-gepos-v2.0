@@ -131,9 +131,45 @@ describe("match.ts — EAN, тааруулалт", async () => {
     assert.equal(amb.productId, null, "0.5 ба 1.5 л ялгагдахгүй — ажилтан сонгоно");
     assert.ok(amb.suggestions.length >= 2);
   });
-  test("≤ 80 бараа бол алиас, их бол хоосон", () => {
+  test("resolveDetection: k / баркод / нэр / үнийн шошго → автомат; ойролцоо → 2–3 сонголт; танихгүй", () => {
+    const PP = [
+      { id: "p1", name: "Кока-Кола 0.5 л", barcodes: ["4860000106075"], price: 2500 },
+      { id: "p2", name: "Кока-Кола 1.5 л", price: 4500 },
+      { id: "p3", name: "Ус «Ундраа» 0.5 л", price: 900 },
+      { id: "p4", name: "Сүү 1 л «Сүү ХК»", price: 3900 },
+    ];
+    const alias = new Map([["a3", "p3"]]);
+    const r1 = m.resolveDetection({ k: "a3", label: "Undraa water" }, PP, alias);
+    assert.deepEqual([r1.status, r1.productId, r1.via], ["matched", "p3", "alias"], "англи нэртэй ч k-аар");
+    assert.equal(m.resolveDetection({ label: "x", barcode: "4860000106075" }, PP, alias).productId, "p1");
+    assert.equal(m.resolveDetection({ label: "Сүү 1 л" }, PP, alias).via, "name");
+    const amb = m.resolveDetection({ label: "Кока-Кола" }, PP, alias);
+    assert.equal(amb.status, "ambiguous");
+    assert.deepEqual(amb.candidates.map((c) => c.id).sort(), ["p1", "p2"]);
+    const byPrice = m.resolveDetection({ label: "Кока-Кола", price_tag: 4500 }, PP, alias);
+    assert.deepEqual([byPrice.status, byPrice.productId, byPrice.via], ["matched", "p2", "price"], "үнийн шошгоор ялгав");
+    const unk = m.resolveDetection({ k: "zz9", label: "Огт өөр зүйл" }, PP, alias);
+    assert.equal(unk.status, "unknown");
+    // k нь сул, харин нэр өөр бараатай хүчтэй таарвал — асууна
+    const clash = m.resolveDetection({ k: "a3", label: "Сүү 1 л ХК" }, PP, alias);
+    assert.equal(clash.status, "ambiguous");
+  });
+  test("dHash, hamming, ирмэг", () => {
+    const g = Array.from({ length: 72 }, (_, i) => (i * 37) % 255);
+    const h = m.dhash(g);
+    assert.match(h, /^[0-9a-f]{16}$/);
+    assert.equal(m.hamming(h, h), 0);
+    assert.equal(m.hamming("ffffffffffffffff", "fffffffffffffffe"), 1);
+    assert.equal(m.hamming("ffffffffffffffff", "0000000000000000"), 64);
+    assert.equal(m.touchesEdge([0.01, 0, 0.3, 0.3]), true);
+    assert.equal(m.touchesEdge([0.7, 0, 0.29, 0.3]), true);
+    assert.equal(m.touchesEdge([0.3, 0, 0.3, 0.3]), false);
+  });
+  test("≤ 200 бараа бол алиас, их бол хоосон", () => {
     assert.equal(m.aliasList(P).cands.length, 4);
-    assert.equal(m.aliasList(Array.from({ length: 81 }, (_, i) => ({ id: `x${i}`, name: `n${i}` }))).cands.length, 0);
+    assert.deepEqual(m.aliasList([{ id: "q", name: "Кола", barcodes: ["4860000106075"], price: 2500 }]).cands[0], { k: "a1", n: "Кола", b: "4860000106075", p: 2500 });
+    assert.equal(m.aliasList(Array.from({ length: 200 }, (_, i) => ({ id: `x${i}`, name: `n${i}` }))).cands.length, 200, "каталог 200 хүртэл");
+    assert.equal(m.aliasList(Array.from({ length: 201 }, (_, i) => ({ id: `x${i}`, name: `n${i}` }))).cands.length, 0);
   });
 });
 
@@ -185,6 +221,24 @@ describe("reorder.ts / gaps.ts — цэвэр тооцоо", async () => {
     ];
     const miss = g.missingOnShelf(ps, new Set(["a"]), new Map([["b", 5], ["c", 0], ["d", 9]]));
     assert.deepEqual(miss.map((x) => x.productId), ["b"]);
+  });
+});
+
+describe("UI: зургаар бөөнөөр тоолох нь үндсэн — амьд баркод уншигч автоматаар нээгдэхгүй", () => {
+  const read = (f) => readFileSync(path.join(ROOT, "src/components/count", f), "utf8");
+  test("үндсэн урсгал (Нүүр, зургийн үр дүн) ZXing CameraScanner ашиглахгүй; камер = <input capture>", () => {
+    for (const f of ["Home.tsx", "PhotoResult.tsx", "CountApp.tsx", "shoot.ts"]) assert.ok(!/CameraScanner|@zxing|getUserMedia/.test(read(f)), `${f} баркод уншигч дуудаж байна`);
+    const ui = read("ui.tsx");
+    assert.match(ui, /capture: "environment"/);
+    assert.match(ui, /multiple: true/, "олон зураг сонгох");
+    assert.match(read("Home.tsx"), /htmlFor="start-cam"[\s\S]*Тоолж эхлэх/);
+    assert.match(read("PhotoResult.tsx"), /htmlFor="next-cam"[\s\S]*Батлах ба дараагийн тавиур/);
+  });
+  test("баркод уншигч зөвхөн тодорхой товшилтоор (анхдагч хаалттай)", () => {
+    const c = read("Counting.tsx");
+    assert.match(c, /useState\(!!scanOnOpen\)/);
+    assert.match(c, /Баркодоор нэг бараа нэмэх/);
+    assert.match(read("NewProduct.tsx"), /useState\(false\);[\s\S]*Баркод уншуулах/);
   });
 });
 
@@ -269,10 +323,18 @@ describe("API интеграц (next start + mock Qwen)", { skip: canServe ? fal
     const cola = d.find((x) => x.label.startsWith("Coca"));
     assert.equal(cola.name, "Кока-Кола 0.5 л");
     assert.equal(cola.via, "alias");
+    assert.equal(cola.status, "matched", "сонгохгүйгээр таарсан");
     assert.equal(cola.facings, 6);
+    assert.deepEqual([cola.depth, cola.depthSource], [4, "ai"], "AI гүн ≥ 0.8 итгэлтэй → урьдчилж бөглөнө");
+    const water = d.find((x) => x.label.startsWith("Ундраа"));
+    assert.deepEqual([water.depth, water.depthEst, water.rows], [null, 3, 2], "итгэл 0.5 → зөвхөн санал, давхар 2");
+    const milk = d.find((x) => x.label === "Сүү 1 л");
+    assert.deepEqual([milk.status, milk.name], ["matched", "Сүү 1 л «Сүү ХК»"], "k-гүй ч нэр+үнээр");
+    assert.equal(r.data.photo.place, "Тавиур 1", "анхны байршил автоматаар");
     const unk = d.find((x) => x.label === "Үл мэдэгдэх бараа");
     assert.equal(unk.facings, 200);
     assert.notEqual(unk.via, "alias");
+    assert.notEqual(unk.status, "matched");
     assert.equal(r.data.result.gaps[0].near_label, "Жүүс");
     assert.equal(await credits(a.owner), c0 - 3);
     // файл: tenant хавтсанд, PNG гарын үсэг ил биш (шифрлэгдсэн), API-аар тайлагдана
@@ -445,6 +507,76 @@ describe("API интеграц (next start + mock Qwen)", { skip: canServe ? fal
     const ok = await a.owner.post(`/api/v1/inventory/sessions/${sid}/approve`, {});
     assert.equal(ok.status, 200, ok.text);
     assert.equal(ok.data.adjusted, 0, "дахин тоолоход таарсан");
+  });
+
+  test("байршил: ижил тавиурыг дахин авбал СОЛИНО; бараг ижил зураг → анхааруулга (кредитгүй); 60с дотор ирмэгийн давхар; баркод Нэмэх/Солих", async () => {
+    const s = await a.staff.post("/api/v1/inventory/sessions", { scope: "category", scopeRef: "Ундаа", ensure: true });
+    assert.equal(s.status, 201, s.text);
+    const sid = s.data.session.id;
+    assert.equal((await a.staff.post("/api/v1/inventory/sessions", { scope: "category", scopeRef: "Ундаа", ensure: true })).data.session.id, sid, "ensure → үргэлжлүүлнэ");
+    assert.equal(s.data.nextPlace, "Тавиур 1");
+    const up = (fields) => {
+      const fd = new FormData();
+      fd.append("image", new Blob([png], { type: "image/png" }), "s.png");
+      for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+      return fetch(`${srv.base}/api/v1/inventory/sessions/${sid}/photos`, { method: "POST", headers: { cookie: a.staff.cookie, origin: srv.base, "x-forwarded-for": a.staff.ip }, body: fd }).then((r) => r.json());
+    };
+    const confirm = (photo, place, f, d) => {
+      const cola = photo.result.detections.find((x) => x.label.startsWith("Coca"));
+      return a.staff.post(`/api/v1/inventory/sessions/${sid}/photos/${photo.photo.id}/confirm`, { place, items: [{ productId: cola.productId, f, d, r: 1, confidence: cola.confidence }] });
+    };
+    const colaLine = async () => (await a.staff.get(`/api/v1/inventory/sessions/${sid}`)).data.lines.find((l) => l.name === "Кока-Кола 0.5 л");
+    const p1 = await up({ phash: "ffffffffffffffff" });
+    assert.equal(p1.photo.place, "Тавиур 1");
+    const c1 = await confirm(p1, "Тавиур 1", 6, 4);
+    assert.equal(c1.status, 200, c1.text);
+    assert.equal((await colaLine()).counted, 24);
+    // дахин илгээх (сүлжээ тасарсан) — ижил үр дүн
+    assert.equal((await confirm(p1, "Тавиур 1", 6, 4)).status, 200);
+    assert.equal((await colaLine()).counted, 24, "idempotent");
+    // бараг ижил зураг → кредит зарцуулахгүй анхааруулна
+    const c0 = await credits(a.owner);
+    const sim = await up({ phash: "fffffffffffffffe" });
+    assert.equal(sim.similar?.place, "Тавиур 1");
+    assert.equal(sim.photo, null);
+    assert.equal(await credits(a.owner), c0, "анхааруулгад кредит хасагдахгүй");
+    // «Солих» → ижил байршилд дахин → өмнөх зургийн тоог солино (24 + 20 биш)
+    const p2 = await up({ phash: "fffffffffffffffe", force: "1", place: "Тавиур 1" });
+    assert.equal(p2.photo.place, "Тавиур 1");
+    const c2 = await confirm(p2, "Тавиур 1", 5, 4);
+    assert.equal(c2.data.replaced, 1);
+    let line = await colaLine();
+    assert.equal(line.counted, 20, "солигдсон, нэмэгдээгүй");
+    assert.deepEqual(line.byPlace.map((x) => [x.place, x.qty]), [["Тавиур 1", 20]]);
+    assert.equal(line.profile.depth, 4, "гүн санагдсан");
+    // өөр байршил (Агуулах), 60с дотор, ирмэг дээр мөн кола → давхар байж магадгүй
+    const p3 = await up({ phash: "0000000000000000", place: "Агуулах" });
+    const cola3 = p3.result.detections.find((x) => x.label.startsWith("Coca"));
+    assert.equal(cola3.dupSuspect?.place, "Тавиур 1");
+    assert.deepEqual(cola3.elsewhere.map((x) => [x.place, x.qty]), [["Тавиур 1", 20]]);
+    assert.equal(cola3.depth, 4, "байршлын/барааны санасан гүн");
+    await confirm(p3, "Агуулах", 2, 10);
+    line = await colaLine();
+    assert.equal(line.counted, 40, "өөр байршил — нийлбэр");
+    assert.deepEqual(line.byPlace.map((x) => [x.place, x.qty]), [["Тавиур 1", 20], ["Агуулах", 20]]);
+    // баркод/гараар — ижил байршилд аль хэдийн тоологдсон → асууна
+    const body = { productId: line.productId, method: "manual", inputs: { q: 5 }, place: "Агуулах", source: "barcode" };
+    const ask = await a.staff.post(`/api/v1/inventory/sessions/${sid}/counts`, { ...body, clientId: "pl-1" });
+    assert.equal(ask.status, 200);
+    assert.deepEqual([ask.data.conflict?.place, ask.data.conflict?.qty, ask.data.count], ["Агуулах", 20, null]);
+    assert.equal((await colaLine()).counted, 40, "асуухад бичигдээгүй");
+    const add = await a.staff.post(`/api/v1/inventory/sessions/${sid}/counts`, { ...body, clientId: "pl-2", mode: "add" });
+    assert.equal(add.status, 201, add.text);
+    assert.equal((await colaLine()).counted, 45, "Нэмэх");
+    const repl = await a.staff.post(`/api/v1/inventory/sessions/${sid}/counts`, { ...body, clientId: "pl-3", mode: "replace" });
+    assert.equal(repl.status, 201);
+    line = await colaLine();
+    assert.equal(line.counted, 25, "Солих: Агуулах = 5");
+    assert.deepEqual(line.byPlace.map((x) => [x.place, x.qty]), [["Тавиур 1", 20], ["Агуулах", 5]]);
+    assert.ok((await a.staff.get(`/api/v1/inventory/sessions/${sid}`)).data.places.includes("Агуулах"));
+    // B tenant → 404
+    assert.equal((await b.owner.post(`/api/v1/inventory/sessions/${sid}/photos/${p1.photo.id}/confirm`, { items: [] })).status, 404);
+    assert.equal((await a.staff.patch(`/api/v1/inventory/sessions/${sid}`, { action: "cancel" })).status, 200);
   });
 
   test("зургаар бараа бүртгэх → ноорог → батлах → ПОС-д (нөөц 0, mobile); давхар баркод 409", async () => {
