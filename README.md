@@ -5,9 +5,9 @@
 **ПОС мерчант бүрт өөрийн мэдлэгийн сан, өгөгдөл дээр ажилладаг AI ажилтан.**
 Захирал энгийн үгээр хэлэхэд AI харилцагчид хариулж, ПОС дээр ажлыг гүйцэтгэж, гар утсаар тооллого хийнэ.
 
-Бүх AI — **Qwen (Alibaba Cloud Model Studio)** · Төлбөр — **QPay (sandbox), урьдчилсан** · 125 автомат тест
+Бүх AI — **Qwen (Alibaba Cloud Model Studio)** · Төлбөр — **QPay (sandbox), урьдчилсан** · 141 автомат тест
 
-[Демо](#демо) · [Слайд](docs/submission/GePOS-v2-AI-slide.pdf) · [Архитектур](docs/GePOS-v2-AI-architecture.pdf) · [Model Studio зарцуулалт](#model-studio-ийн-зарцуулалт) · [Байршуулалт](docs/DEPLOY.md)
+[Демо](#демо) · [Танилцуулга бичлэг (1:37)](docs/submission/GePOS-v2-intro.mp4) · [Слайд](docs/submission/GePOS-v2-AI-slide.pdf) · [Архитектур](docs/GePOS-v2-AI-architecture.pdf) · [Model Studio зарцуулалт](#model-studio-ийн-зарцуулалт) · [Байршуулалт](docs/DEPLOY.md)
 
 </div>
 
@@ -25,7 +25,9 @@
 | Тооллогын утасны апп | https://castle-productions-discussion-commission.trycloudflare.com/count — РД `6543210` → PIN `1234` (эсвэл самбарын «Тооллого → Утас холбох» QR) |
 | ПОС · Merchant portal | https://castle-productions-discussion-commission.trycloudflare.com/ · https://castle-productions-discussion-commission.trycloudflare.com/portal |
 
-> Демо сервер одоогоор түр HTTPS холбоосоор ажиллаж байна. Байнгын домэйнд шилжмэгц энэ хүснэгтийг шинэчилнэ. Бүх өгөгдөл зохиомол: «Мөнх-Од мини маркет» демо мерчант, «Dayansoft-demo» түнш.
+> ПОС, борлуулалт, CRM-ийн өгөгдөл зохиомол: «Мөнх-Од мини маркет» демо мерчант, «Dayansoft-demo» түнш. Facebook сувагт Gerege POS-ийн өөрийн Page холбогдсон; тэнд AI анхдагчаар хариулахгүй (зөвхөн туршигч горим).
+>
+> **Танилцуулга бичлэг:** [docs/submission/GePOS-v2-intro.mp4](docs/submission/GePOS-v2-intro.mp4) (1:37, монгол дуу) · **Merchant portal:** AI ажилтны бүх хэсэг `/portal` цэсний «AI ажилтан» бүлэгт мөн байна.
 
 **Шүүгчийн 5 минутын замнал**
 1. `/ai` → **Тушаал**: «Өнөөдрийн борлуулалт ямар байна? Өчигдөртэй харьцуул.» Хариулт ПОС-ын бодит тоог ашиглана, аль туслах ажилласан нь харагдана.
@@ -112,7 +114,7 @@
 | Realtime inference зөвхөн Qwen (Model Studio) | `src/lib/agent/qwen.ts`. Хуучин Gemini туслах `/api/ai/*` → 404. **Үл хамаарах:** дуудлагын дуут хариу түр Gemini TTS (дээрх мэдэгдлийг үз), `AI_TTS_PROVIDER`-ээр унтарна |
 | Бүх төлбөр урьдчилсан, QPay | `billing.ts`: зөвхөн **sandbox** (production URL-ийг код хориглоно). Кредит 0 бол AI зогсоно |
 | Өрсөлдөхүйц үнэ, 2–3 үйлчилгээтэй харьцуулалт | Багц, төлбөр хуудас, [слайд](docs/submission/GePOS-v2-AI-slide.pdf) |
-| Бодит харилцагчийн өгөгдөл ашиглахгүй | Зөвхөн seed болон зохиомол өгөгдөл. Facebook AI анхдагчаар унтарсан, «бүгдэд хариулах» горимыг сервер хориглоно |
+| Бодит харилцагчийн өгөгдөл ашиглахгүй | ПОС, CRM, тооллого, демо мерчант, түнш — бүгд seed/зохиомол. Facebook сувагт Gerege POS-ийн өөрийн Page холбогдсон: AI анхдагчаар хариулахгүй, «бүгдэд хариулах» горимыг сервер хориглоно |
 
 ## Ажиллуулах
 
@@ -120,7 +122,7 @@
 npm ci
 cp .env.example .env.local   # DASHSCOPE_API_KEY, AI_BASE_URL, AUTH_SECRET, TENANT_KEK …
 npm run dev                  # http://localhost:3100/ai
-npm test                     # build + 125 тест (mock Qwen/QPay, бодит токен зарцуулахгүй)
+npm test                     # build + 141 тест (mock Qwen/QPay, бодит токен зарцуулахгүй)
 ```
 Node 26 буюу түүнээс шинэ хувилбар шаардлагатай (`node:sqlite`). Серверт байршуулах заавар: [`docs/DEPLOY.md`](docs/DEPLOY.md) (`deploy/install.sh` — Caddy HTTPS + systemd).
 
